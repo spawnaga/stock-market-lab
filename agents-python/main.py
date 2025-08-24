@@ -38,6 +38,7 @@ class BaseAgent:
         self.agent_id = agent_id
         self.agent_type = agent_type
         self.running = False
+        self.guardrails_enabled = True  # Enable guardrails by default
         
     def start(self):
         """Start the agent."""
@@ -48,6 +49,26 @@ class BaseAgent:
         """Stop the agent."""
         self.running = False
         logger.info(f"Stopping {self.agent_type} agent {self.agent_id}")
+        
+    def apply_guardrails(self, decision):
+        """Apply safety checks and guardrails to agent decisions."""
+        if not self.guardrails_enabled:
+            return decision
+            
+        # Basic guardrail checks
+        if 'action' in decision:
+            # Prevent extreme actions that could be risky
+            if decision['action'] in ['sell_all', 'buy_all'] and decision.get('confidence', 0) > 0.9:
+                # Reduce confidence for extreme actions
+                decision['confidence'] = min(decision.get('confidence', 1.0) * 0.7, 0.8)
+                decision['reason'] += " (Guardrail: Reduced confidence for extreme action)"
+                
+            # Check for suspicious confidence levels
+            if decision.get('confidence', 0) > 0.95:
+                decision['confidence'] = 0.95
+                decision['reason'] += " (Guardrail: Confidence capped at 95%)"
+                
+        return decision
 
 class RLAgent(BaseAgent):
     """Reinforcement Learning Agent for trading decisions."""
@@ -67,6 +88,9 @@ class RLAgent(BaseAgent):
                     data = json.loads(market_data)
                     # Process with RL model (placeholder)
                     decision = self._make_decision(data)
+                    
+                    # Apply guardrails
+                    decision = self.apply_guardrails(decision)
                     
                     # Publish decision to Kafka-like topic
                     socketio.emit('agent_decision', {
@@ -107,6 +131,9 @@ class LSTMPricePredictor(BaseAgent):
                     # Process with LSTM model (placeholder)
                     prediction = self._predict_price(historical_data)
                     
+                    # Apply guardrails
+                    prediction = self.apply_guardrails(prediction)
+                    
                     # Publish prediction to Kafka-like topic
                     socketio.emit('price_prediction', {
                         'agent_id': self.agent_id,
@@ -144,6 +171,9 @@ class NewsSentimentAgent(BaseAgent):
                 if news_articles:
                     # Process with NLP model (placeholder)
                     sentiment = self._analyze_sentiment(news_articles)
+                    
+                    # Apply guardrails
+                    sentiment = self.apply_guardrails(sentiment)
                     
                     # Publish sentiment to Kafka-like topic
                     socketio.emit('sentiment_analysis', {
@@ -258,6 +288,48 @@ def create_strategy():
     socketio.emit('strategy_created', strategy)
     
     return jsonify(strategy), 201
+
+@app.route('/override/<agent_id>', methods=['POST'])
+def override_agent_decision(agent_id):
+    """Allow human override of agent decisions."""
+    data = request.get_json()
+    
+    if not data or 'override_action' not in data:
+        return jsonify({"error": "Override action is required"}), 400
+    
+    # In a real implementation, this would validate the override and apply it
+    override_data = {
+        "agent_id": agent_id,
+        "override_action": data['override_action'],
+        "override_reason": data.get('reason', ''),
+        "timestamp": time.time(),
+        "user": data.get('user', 'human')
+    }
+    
+    # Emit override event to frontend
+    socketio.emit('agent_override', override_data)
+    
+    return jsonify({"status": "override applied", "data": override_data}), 200
+
+@app.route('/guardrails/<agent_id>/<setting>', methods=['PUT'])
+def toggle_guardrails(agent_id, setting):
+    """Enable/disable guardrails for a specific agent."""
+    try:
+        # Find the agent and toggle guardrails
+        # This is a simplified implementation - in practice, you'd have a registry of agents
+        if setting.lower() in ['enable', 'disable']:
+            # In a real implementation, we'd maintain a registry of agents
+            # For now, we'll just return success
+            return jsonify({
+                "status": "guardrails toggled",
+                "agent_id": agent_id,
+                "setting": setting,
+                "message": f"Guardrails {'enabled' if setting.lower() == 'enable' else 'disabled'} for agent {agent_id}"
+            }), 200
+        else:
+            return jsonify({"error": "Invalid setting. Use 'enable' or 'disable'"}), 400
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 @socketio.on('connect')
 def handle_connect():

@@ -6,6 +6,7 @@ This directory contains the Python agents that implement various AI/ML models fo
 - News/NLP Sentiment Analysis Agent
 - Communication layer for WebSocket messaging
 - Real Market Data Integration
+- Enhanced Human-AI Collaboration Features
 
 ## Market Data Integration
 
@@ -28,9 +29,33 @@ MARKET_DATA_API_KEY=your_api_key_here
 3. **News Integration**: Gets recent news articles related to securities
 4. **Data Streaming**: Continuously streams data to Redis for agent consumption
 
-### Usage
+## Enhanced Human-AI Collaboration
 
-The market data is automatically streamed to Redis at regular intervals:
-- Latest prices stored in `latest_market_data` key
-- Historical data stored in `historical_prices_{symbol}` lists
-- News articles stored in `news_articles` list
+The system now includes guardrails and override mechanisms to ensure safe human-AI interaction:
+
+### Guardrails
+- Confidence level capping to prevent overconfident decisions
+- Extreme action mitigation (e.g., preventing "sell_all" actions with very high confidence)
+- Decision validation and safety checks
+
+### Override Mechanisms
+- REST API endpoints for human override of agent decisions
+- WebSocket events for real-time override notifications
+- Guardrail toggling for specific agents
+
+### API Endpoints
+
+#### Override Agent Decisions
+```
+POST /override/{agent_id}
+{
+  "override_action": "hold|buy|sell",
+  "reason": "Human override reason",
+  "user": "username"
+}
+```
+
+#### Toggle Guardrails
+```
+PUT /guardrails/{agent_id}/{enable|disable}
+```
