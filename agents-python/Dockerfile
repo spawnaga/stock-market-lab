@@ -6,6 +6,9 @@ RUN apt-get update && apt-get install -y \
     g++ \
     && rm -rf /var/lib/apt/lists/*
 
+# Create logs directory
+RUN mkdir -p /app/logs
+
 # Set working directory
 WORKDIR /app
 
@@ -20,6 +23,13 @@ COPY . .
 
 # Expose port for health checks
 EXPOSE 5000
+
+# Create a non-root user for security
+RUN addgroup --system --gid 1001 appuser && \
+    adduser --system --uid 1001 appuser && \
+    chown -R appuser:appuser /app
+
+USER appuser
 
 # Run the application
 CMD ["python", "main.py"]

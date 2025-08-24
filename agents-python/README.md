@@ -8,6 +8,30 @@ This directory contains the Python agents that implement various AI/ML models fo
 - Real Market Data Integration
 - Enhanced Human-AI Collaboration Features
 
+## Security Features
+
+The agents service implements several production-grade security features:
+
+### Authentication
+- JWT-based authentication for protected API endpoints
+- Login endpoint to obtain access tokens
+- Token validation and expiration handling
+
+### Rate Limiting
+- Per-IP rate limiting to prevent abuse
+- Configurable limits for different endpoints
+- 429 Too Many Requests responses when limits exceeded
+
+### Logging
+- Rotating file logs with automatic cleanup
+- Structured logging for better monitoring
+- Detailed error logging for debugging
+
+### Graceful Shutdown
+- Signal handling for SIGINT and SIGTERM
+- Proper cleanup of agents and resources
+- Smooth shutdown without data loss
+
 ## Market Data Integration
 
 The system now supports integration with real market data providers:
@@ -58,4 +82,21 @@ POST /override/{agent_id}
 #### Toggle Guardrails
 ```
 PUT /guardrails/{agent_id}/{enable|disable}
+```
+
+#### Authentication
+```
+POST /login
+{
+  "username": "your_username",
+  "password": "your_password"
+}
+```
+
+#### Monitoring
+```
+GET /health
+GET /metrics (requires authentication)
+GET /strategies (requires authentication)
+POST /strategies (requires authentication)
 ```

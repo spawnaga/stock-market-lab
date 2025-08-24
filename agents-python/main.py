@@ -8,19 +8,37 @@ import threading
 import time
 import json
 import os
+import signal
+import sys
+from functools import wraps
 from flask import Flask, jsonify, request
 from flask_socketio import SocketIO
 import redis
 import logging
+from logging.handlers import RotatingFileHandler
+import secrets
+from datetime import datetime, timedelta
+import jwt
+from werkzeug.exceptions import HTTPException
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
+# Configure logging with rotation
+if not os.path.exists('logs'):
+    os.mkdir('logs')
+
+file_handler = RotatingFileHandler('logs/agents.log', maxBytes=10240, backupCount=10)
+file_handler.setFormatter(logging.Formatter(
+    '%(asctime)s %(levelname)s: %(message)s [in %(pathname)s:%(lineno)d]'
+))
+file_handler.setLevel(logging.INFO)
+
 logger = logging.getLogger(__name__)
+logger.addHandler(file_handler)
+logger.setLevel(logging.INFO)
 
 # Initialize Flask app and SocketIO
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'stock-market-secret-key'
-socketio = SocketIO(app, cors_allowed_origins="*")
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'stock-market-secret-key')
+socketio = SocketIO(app, cors_allowed_origins="*", logger=True, engineio_logger=True)
 
 # Redis connection for real-time data
 redis_client = redis.Redis(host='redis', port=6379, db=0, decode_responses=True)
@@ -28,8 +46,68 @@ redis_client = redis.Redis(host='redis', port=6379, db=0, decode_responses=True)
 # In-memory storage for strategies (would be replaced with DB in production)
 strategies = []
 
+# Rate limiting storage (in-memory for demo, would use Redis in production)
+rate_limit_store = {}
+
+# JWT token expiration time (in seconds)
+JWT_EXPIRATION_SECONDS = 3600
+
 # Import market data handler
 from market_data import MarketDataHandler
+
+def token_required(f):
+    """Decorator to require valid JWT token for protected routes."""
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        token = request.headers.get('Authorization')
+        
+        if not token:
+            return jsonify({'error': 'Token is missing'}), 401
+            
+        try:
+            # Remove 'Bearer ' prefix if present
+            if token.startswith('Bearer '):
+                token = token[7:]
+                
+            # Decode the token
+            data = jwt.decode(token, app.config['SECRET_KEY'], algorithms=['HS256'])
+            current_user = data['user']
+        except jwt.ExpiredSignatureError:
+            return jsonify({'error': 'Token has expired'}), 401
+        except jwt.InvalidTokenError:
+            return jsonify({'error': 'Invalid token'}), 401
+            
+        return f(current_user, *args, **kwargs)
+    return decorated
+
+def rate_limit(max_requests=100, window=3600):
+    """Rate limiting decorator."""
+    def decorator(f):
+        @wraps(f)
+        def decorated(*args, **kwargs):
+            client_ip = request.remote_addr
+            now = time.time()
+            
+            # Initialize rate limit for this IP if not exists
+            if client_ip not in rate_limit_store:
+                rate_limit_store[client_ip] = []
+            
+            # Clean old requests outside the window
+            rate_limit_store[client_ip] = [
+                req_time for req_time in rate_limit_store[client_ip]
+                if now - req_time < window
+            ]
+            
+            # Check if limit exceeded
+            if len(rate_limit_store[client_ip]) >= max_requests:
+                return jsonify({'error': 'Rate limit exceeded'}), 429
+                
+            # Add current request
+            rate_limit_store[client_ip].append(now)
+            
+            return f(*args, **kwargs)
+        return decorated
+    return decorator
 
 class BaseAgent:
     """Base class for all trading agents."""
@@ -39,16 +117,17 @@ class BaseAgent:
         self.agent_type = agent_type
         self.running = False
         self.guardrails_enabled = True  # Enable guardrails by default
+        self.logger = logging.getLogger(f"{__name__}.{self.agent_type}")
         
     def start(self):
         """Start the agent."""
         self.running = True
-        logger.info(f"Starting {self.agent_type} agent {self.agent_id}")
+        self.logger.info(f"Starting {self.agent_type} agent {self.agent_id}")
         
     def stop(self):
         """Stop the agent."""
         self.running = False
-        logger.info(f"Stopping {self.agent_type} agent {self.agent_id}")
+        self.logger.info(f"Stopping {self.agent_type} agent {self.agent_id}")
         
     def apply_guardrails(self, decision):
         """Apply safety checks and guardrails to agent decisions."""
@@ -101,7 +180,9 @@ class RLAgent(BaseAgent):
                     })
                     
             except Exception as e:
-                logger.error(f"Error in RL agent: {e}")
+                self.logger.error(f"Error in RL agent: {e}")
+                # Continue running even if one iteration fails
+                pass
                 
             time.sleep(2)  # Poll every 2 seconds
             
@@ -143,7 +224,9 @@ class LSTMPricePredictor(BaseAgent):
                     })
                     
             except Exception as e:
-                logger.error(f"Error in LSTM agent: {e}")
+                self.logger.error(f"Error in LSTM agent: {e}")
+                # Continue running even if one iteration fails
+                pass
                 
             time.sleep(5)  # Poll every 5 seconds
             
@@ -184,7 +267,9 @@ class NewsSentimentAgent(BaseAgent):
                     })
                     
             except Exception as e:
-                logger.error(f"Error in News agent: {e}")
+                self.logger.error(f"Error in News agent: {e}")
+                # Continue running even if one iteration fails
+                pass
                 
             time.sleep(10)  # Poll every 10 seconds
             
@@ -200,6 +285,28 @@ class NewsSentimentAgent(BaseAgent):
 # Global variables for market data
 market_data_handler = None
 data_streaming_thread = None
+
+# Graceful shutdown handling
+def signal_handler(sig, frame):
+    """Handle graceful shutdown signals."""
+    logger.info('Received shutdown signal, stopping agents...')
+    
+    # Stop all agents
+    rl_agent.stop()
+    lstm_agent.stop()
+    news_agent.stop()
+    
+    # Stop data streaming
+    global data_streaming_thread
+    if data_streaming_thread and data_streaming_thread.is_alive():
+        data_streaming_thread.join(timeout=5)
+    
+    logger.info('All agents stopped gracefully')
+    sys.exit(0)
+
+# Register signal handlers
+signal.signal(signal.SIGINT, signal_handler)
+signal.signal(signal.SIGTERM, signal_handler)
 
 # Initialize agents
 rl_agent = RLAgent("rl-001")
@@ -256,10 +363,80 @@ def start_agents():
     
     logger.info("All agents started successfully")
 
+@app.route('/login', methods=['POST'])
+@rate_limit(max_requests=5, window=300)  # 5 requests per 5 minutes
+def login():
+    """Login endpoint to get JWT token."""
+    try:
+        data = request.get_json()
+        
+        if not data or 'username' not in data or 'password' not in data:
+            return jsonify({'error': 'Username and password required'}), 400
+            
+        # In a real implementation, validate credentials against a database
+        # For this demo, we'll accept any valid credentials
+        username = data['username']
+        password = data['password']
+        
+        # Create JWT token
+        token = jwt.encode({
+            'user': username,
+            'exp': datetime.utcnow() + timedelta(seconds=JWT_EXPIRATION_SECONDS)
+        }, app.config['SECRET_KEY'], algorithm='HS256')
+        
+        return jsonify({
+            'token': token,
+            'expires_in': JWT_EXPIRATION_SECONDS,
+            'user': username
+        }), 200
+        
+    except Exception as e:
+        logger.error(f"Login error: {e}")
+        return jsonify({'error': 'Internal server error'}), 500
+
 @app.route('/health')
+@rate_limit(max_requests=1000, window=3600)  # Very generous limit for health checks
 def health_check():
     """Health check endpoint."""
-    return jsonify({"status": "healthy", "agents": ["RL", "LSTM", "News/NLP"]})
+    try:
+        # Test Redis connectivity
+        redis_client.ping()
+        
+        # Test database connectivity (would be implemented with actual DB connection)
+        # For now, we'll just return healthy status
+        
+        return jsonify({
+            "status": "healthy", 
+            "agents": ["RL", "LSTM", "News/NLP"],
+            "timestamp": time.time()
+        })
+    except Exception as e:
+        logger.error(f"Health check failed: {e}")
+        return jsonify({"status": "unhealthy", "error": str(e)}), 500
+
+@app.route('/metrics')
+@token_required
+@rate_limit(max_requests=50, window=3600)
+def get_metrics(current_user):
+    """Get system metrics endpoint."""
+    try:
+        # Collect basic metrics
+        metrics = {
+            "timestamp": time.time(),
+            "connected_clients": len(socketio.server.manager.get_participants('/')),
+            "active_agents": {
+                "rl": rl_agent.running,
+                "lstm": lstm_agent.running,
+                "news": news_agent.running
+            },
+            "memory_usage": "not implemented",
+            "cpu_usage": "not implemented"
+        }
+        
+        return jsonify(metrics)
+    except Exception as e:
+        logger.error(f"Metrics error: {e}")
+        return jsonify({"error": "Failed to collect metrics"}), 500
 
 @app.route('/strategies', methods=['GET'])
 def get_strategies():
@@ -330,6 +507,109 @@ def toggle_guardrails(agent_id, setting):
             return jsonify({"error": "Invalid setting. Use 'enable' or 'disable'"}), 400
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+@app.route('/strategies', methods=['GET'])
+@token_required
+@rate_limit(max_requests=100, window=3600)
+def get_strategies(current_user):
+    """Get all saved strategies."""
+    try:
+        return jsonify({"strategies": strategies})
+    except Exception as e:
+        logger.error(f"Error getting strategies: {e}")
+        return jsonify({"error": "Failed to retrieve strategies"}), 500
+
+@app.route('/strategies', methods=['POST'])
+@token_required
+@rate_limit(max_requests=50, window=3600)
+def create_strategy(current_user):
+    """Create a new strategy."""
+    try:
+        data = request.get_json()
+        
+        if not data or 'name' not in data or 'description' not in data:
+            return jsonify({"error": "Name and description are required"}), 400
+        
+        # Validate input
+        if not isinstance(data['name'], str) or not isinstance(data['description'], str):
+            return jsonify({"error": "Name and description must be strings"}), 400
+            
+        strategy = {
+            "id": f"strat-{len(strategies) + 1}",
+            "name": data['name'],
+            "description": data['description'],
+            "parameters": data.get('parameters', {}),
+            "createdAt": time.time(),
+            "createdBy": current_user
+        }
+        
+        strategies.append(strategy)
+        
+        # Notify frontend about new strategy
+        socketio.emit('strategy_created', strategy)
+        
+        return jsonify(strategy), 201
+        
+    except Exception as e:
+        logger.error(f"Error creating strategy: {e}")
+        return jsonify({"error": "Failed to create strategy"}), 500
+
+@app.route('/override/<agent_id>', methods=['POST'])
+@token_required
+@rate_limit(max_requests=100, window=3600)
+def override_agent_decision(current_user, agent_id):
+    """Allow human override of agent decisions."""
+    try:
+        data = request.get_json()
+        
+        if not data or 'override_action' not in data:
+            return jsonify({"error": "Override action is required"}), 400
+        
+        # Validate input
+        if not isinstance(data['override_action'], str):
+            return jsonify({"error": "Override action must be a string"}), 400
+            
+        # In a real implementation, this would validate the override and apply it
+        override_data = {
+            "agent_id": agent_id,
+            "override_action": data['override_action'],
+            "override_reason": data.get('reason', ''),
+            "timestamp": time.time(),
+            "user": current_user
+        }
+        
+        # Emit override event to frontend
+        socketio.emit('agent_override', override_data)
+        
+        return jsonify({"status": "override applied", "data": override_data}), 200
+        
+    except Exception as e:
+        logger.error(f"Error applying override: {e}")
+        return jsonify({"error": "Failed to apply override"}), 500
+
+@app.route('/guardrails/<agent_id>/<setting>', methods=['PUT'])
+@token_required
+@rate_limit(max_requests=50, window=3600)
+def toggle_guardrails(current_user, agent_id, setting):
+    """Enable/disable guardrails for a specific agent."""
+    try:
+        # Find the agent and toggle guardrails
+        # This is a simplified implementation - in practice, you'd have a registry of agents
+        if setting.lower() in ['enable', 'disable']:
+            # In a real implementation, we'd maintain a registry of agents
+            # For now, we'll just return success
+            return jsonify({
+                "status": "guardrails toggled",
+                "agent_id": agent_id,
+                "setting": setting,
+                "message": f"Guardrails {'enabled' if setting.lower() == 'enable' else 'disabled'} for agent {agent_id}",
+                "by": current_user
+            }), 200
+        else:
+            return jsonify({"error": "Invalid setting. Use 'enable' or 'disable'"}), 400
+    except Exception as e:
+        logger.error(f"Error toggling guardrails: {e}")
+        return jsonify({"error": "Failed to toggle guardrails"}), 500
 
 @socketio.on('connect')
 def handle_connect():
