@@ -9,6 +9,7 @@ A cutting-edge platform that combines multiple AI agents to analyze stock market
 - Visualization dashboard for trading insights
 - Human-AI collaboration with guardrails
 - Backtesting and forward-testing capabilities
+- Advanced monitoring and performance optimization
 
 ## Tech Stack
 - Backend: C++ (fast data ingestion + WebSocket)

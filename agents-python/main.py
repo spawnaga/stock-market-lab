@@ -60,7 +60,10 @@ agent_metrics = defaultdict(lambda: {
     'executions': 0,
     'errors': 0,
     'last_execution': 0,
-    'execution_times': deque(maxlen=100)
+    'execution_times': deque(maxlen=100),
+    'success_rate': 0.0,
+    'avg_execution_time': 0.0,
+    'error_details': []
 })
 
 system_metrics = {
@@ -68,11 +71,21 @@ system_metrics = {
     'total_requests': 0,
     'error_count': 0,
     'memory_usage_mb': 0,
-    'cpu_percent': 0
+    'cpu_percent': 0,
+    'active_threads': 0,
+    'connected_clients': 0
 }
 
 # Request timing tracking
 request_timings = deque(maxlen=1000)
+
+# Performance optimization settings
+PERFORMANCE_SETTINGS = {
+    'max_concurrent_requests': 100,
+    'request_queue_size': 500,
+    'memory_cleanup_interval': 300,  # seconds
+    'metrics_collection_interval': 60  # seconds
+}
 
 # Import market data handler
 from market_data import MarketDataHandler
@@ -125,6 +138,9 @@ def track_metrics(f):
                 process = psutil.Process(os.getpid())
                 system_metrics['memory_usage_mb'] = process.memory_info().rss / 1024 / 1024
                 system_metrics['cpu_percent'] = process.cpu_percent()
+                system_metrics['active_threads'] = threading.active_count()
+                # Update connected clients count
+                system_metrics['connected_clients'] = len(socketio.server.manager.get_participants('/'))
             except Exception as e:
                 logger.warning(f"Could not update system metrics: {e}")
     return decorated
@@ -200,7 +216,7 @@ class BaseAgent:
                 
         return decision
         
-    def record_execution(self, execution_time, success=True):
+    def record_execution(self, execution_time, success=True, error_message=None):
         """Record agent execution metrics."""
         self.metrics['executions'] += 1
         self.metrics['last_execution'] = time.time()
@@ -208,6 +224,21 @@ class BaseAgent:
         
         if not success:
             self.metrics['errors'] += 1
+            # Store error details for debugging
+            if error_message:
+                self.metrics['error_details'].append({
+                    'timestamp': time.time(),
+                    'error': error_message
+                })
+                # Keep only last 10 error details
+                if len(self.metrics['error_details']) > 10:
+                    self.metrics['error_details'].pop(0)
+        
+        # Calculate success rate and average execution time
+        total_executions = self.metrics['executions']
+        if total_executions > 0:
+            self.metrics['success_rate'] = (total_executions - self.metrics['errors']) / total_executions
+            self.metrics['avg_execution_time'] = sum(self.metrics['execution_times']) / len(self.metrics['execution_times'])
 
 class RLAgent(BaseAgent):
     """Reinforcement Learning Agent for trading decisions."""
@@ -242,7 +273,7 @@ class RLAgent(BaseAgent):
                     
             except Exception as e:
                 self.logger.error(f"Error in RL agent: {e}")
-                self.record_execution(time.time() - start_time, success=False)
+                self.record_execution(time.time() - start_time, success=False, error_message=str(e))
                 # Continue running even if one iteration fails
                 pass
             else:
@@ -290,7 +321,7 @@ class LSTMPricePredictor(BaseAgent):
                     
             except Exception as e:
                 self.logger.error(f"Error in LSTM agent: {e}")
-                self.record_execution(time.time() - start_time, success=False)
+                self.record_execution(time.time() - start_time, success=False, error_message=str(e))
                 # Continue running even if one iteration fails
                 pass
             else:
@@ -337,7 +368,7 @@ class NewsSentimentAgent(BaseAgent):
                     
             except Exception as e:
                 self.logger.error(f"Error in News agent: {e}")
-                self.record_execution(time.time() - start_time, success=False)
+                self.record_execution(time.time() - start_time, success=False, error_message=str(e))
                 # Continue running even if one iteration fails
                 pass
             else:
@@ -506,11 +537,21 @@ def health_check():
             "system": {
                 "memory_mb": round(memory_mb, 2),
                 "cpu_percent": cpu_percent,
-                "uptime_seconds": time.time() - system_metrics['startup_time']
+                "uptime_seconds": time.time() - system_metrics['startup_time'],
+                "active_threads": system_metrics['active_threads'],
+                "connected_clients": system_metrics['connected_clients']
             },
             "metrics": {
                 "total_requests": system_metrics['total_requests'],
-                "error_count": system_metrics['error_count']
+                "error_count": system_metrics['error_count'],
+                "requests_per_second": len(request_timings) / 60 if len(request_timings) > 0 else 0
+            },
+            "performance": {
+                "avg_request_time": round(sum(request_timings) / len(request_timings) if request_timings else 0, 4),
+                "agent_success_rates": {
+                    agent_type: round(metrics['success_rate'], 4) 
+                    for agent_type, metrics in agent_metrics.items()
+                }
             },
             "timestamp": time.time()
         })
@@ -543,7 +584,10 @@ def get_metrics(current_user):
                 'errors': metrics['errors'],
                 'last_execution': metrics['last_execution'],
                 'avg_execution_time': round(avg_exec_time, 4),
-                'recent_execution_times': list(metrics['execution_times'])
+                'success_rate': round(metrics['success_rate'], 4),
+                'avg_execution_time': round(metrics['avg_execution_time'], 4),
+                'recent_execution_times': list(metrics['execution_times']),
+                'error_details': metrics['error_details'][-5:]  # Last 5 errors
             }
         
         metrics_response = {
@@ -554,7 +598,10 @@ def get_metrics(current_user):
                 "cpu_percent": cpu_percent,
                 "uptime_seconds": time.time() - system_metrics['startup_time'],
                 "requests_per_second": len(request_timings) / 60 if len(request_timings) > 0 else 0,
-                "avg_request_time": round(avg_request_time, 4)
+                "avg_request_time": round(avg_request_time, 4),
+                "active_threads": system_metrics['active_threads'],
+                "total_requests": system_metrics['total_requests'],
+                "error_count": system_metrics['error_count']
             },
             "agents": agent_details,
             "requests": {
@@ -769,6 +816,110 @@ def override_agent_decision(current_user, agent_id):
     except Exception as e:
         logger.error(f"Error applying override: {e}")
         return jsonify({"error": "Failed to apply override"}), 500
+
+@app.route('/performance/optimization', methods=['GET'])
+@token_required
+@track_metrics
+@rate_limit(max_requests=20, window=3600)
+def get_performance_optimization(current_user):
+    """Get performance optimization recommendations based on current system metrics."""
+    try:
+        # Analyze current system performance
+        current_memory = system_metrics['memory_usage_mb']
+        current_cpu = system_metrics['cpu_percent']
+        active_threads = system_metrics['active_threads']
+        connected_clients = system_metrics['connected_clients']
+        
+        # Calculate performance indicators
+        avg_request_time = sum(request_timings) / len(request_timings) if request_timings else 0
+        requests_per_second = len(request_timings) / 60 if len(request_timings) > 0 else 0
+        
+        # Agent performance analysis
+        agent_performance = {}
+        for agent_type, metrics in agent_metrics.items():
+            agent_performance[agent_type] = {
+                'success_rate': metrics['success_rate'],
+                'avg_execution_time': metrics['avg_execution_time'],
+                'executions': metrics['executions']
+            }
+        
+        # Generate optimization recommendations
+        recommendations = []
+        
+        # Memory usage recommendations
+        if current_memory > 500:  # 500MB threshold
+            recommendations.append({
+                "type": "memory",
+                "severity": "warning",
+                "recommendation": "High memory usage detected. Consider increasing available memory or optimizing data structures.",
+                "current_value": f"{current_memory:.2f} MB"
+            })
+        
+        # CPU usage recommendations  
+        if current_cpu > 80:
+            recommendations.append({
+                "type": "cpu",
+                "severity": "warning",
+                "recommendation": "High CPU usage detected. Consider reducing concurrent agents or optimizing processing logic.",
+                "current_value": f"{current_cpu:.2f}%"
+            })
+        
+        # Thread count recommendations
+        if active_threads > 50:
+            recommendations.append({
+                "type": "threads",
+                "severity": "warning",
+                "recommendation": "High number of active threads. Consider thread pooling or reducing concurrency.",
+                "current_value": f"{active_threads} threads"
+            })
+        
+        # Request performance recommendations
+        if avg_request_time > 1.0:  # 1 second threshold
+            recommendations.append({
+                "type": "latency",
+                "severity": "warning",
+                "recommendation": "High average request latency detected. Optimize slow endpoints or increase resources.",
+                "current_value": f"{avg_request_time:.4f} seconds"
+            })
+        
+        # Agent success rate recommendations
+        low_success_agents = [agent for agent, perf in agent_performance.items() 
+                             if perf['success_rate'] < 0.8 and perf['executions'] > 10]
+        if low_success_agents:
+            recommendations.append({
+                "type": "agent_performance",
+                "severity": "warning",
+                "recommendation": f"Low success rates detected in agents: {', '.join(low_success_agents)}. Investigate and optimize.",
+                "affected_agents": low_success_agents
+            })
+        
+        # Overall system health
+        system_health = "good"
+        if len(recommendations) > 0:
+            system_health = "needs_attention"
+            # Check if any critical recommendations exist
+            critical_recommendations = [r for r in recommendations if r['severity'] == 'critical']
+            if critical_recommendations:
+                system_health = "critical"
+        
+        return jsonify({
+            "system_health": system_health,
+            "current_metrics": {
+                "memory_mb": round(current_memory, 2),
+                "cpu_percent": current_cpu,
+                "active_threads": active_threads,
+                "connected_clients": connected_clients,
+                "avg_request_time": round(avg_request_time, 4),
+                "requests_per_second": round(requests_per_second, 2)
+            },
+            "agent_performance": agent_performance,
+            "recommendations": recommendations,
+            "timestamp": time.time()
+        })
+        
+    except Exception as e:
+        logger.error(f"Error getting performance optimization: {e}")
+        return jsonify({"error": "Failed to generate optimization recommendations"}), 500
 
 @app.route('/guardrails/<agent_id>/<setting>', methods=['PUT'])
 @token_required
