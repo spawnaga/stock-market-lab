@@ -7,6 +7,7 @@ This service runs multiple AI agents that analyze market data and make trading d
 import threading
 import time
 import json
+import os
 from flask import Flask, jsonify, request
 from flask_socketio import SocketIO
 import redis
@@ -26,6 +27,9 @@ redis_client = redis.Redis(host='redis', port=6379, db=0, decode_responses=True)
 
 # In-memory storage for strategies (would be replaced with DB in production)
 strategies = []
+
+# Import market data handler
+from market_data import MarketDataHandler
 
 class BaseAgent:
     """Base class for all trading agents."""
@@ -163,10 +167,40 @@ class NewsSentimentAgent(BaseAgent):
             "key_topics": ["earnings", "market"]
         }
 
+# Global variables for market data
+market_data_handler = None
+data_streaming_thread = None
+
 # Initialize agents
 rl_agent = RLAgent("rl-001")
 lstm_agent = LSTMPricePredictor("lstm-001")
 news_agent = NewsSentimentAgent("news-001")
+
+def start_market_data_streaming():
+    """Start streaming real market data."""
+    global market_data_handler, data_streaming_thread
+    
+    # Get market data provider from environment or default to polygon
+    provider = os.getenv('MARKET_DATA_PROVIDER', 'polygon')
+    api_key = os.getenv('MARKET_DATA_API_KEY')
+    
+    try:
+        market_data_handler = MarketDataHandler(provider, api_key)
+        logger.info(f"Initialized {provider} market data handler")
+        
+        # Start data streaming in a separate thread
+        data_streaming_thread = threading.Thread(
+            target=market_data_handler.start_data_streaming,
+            args=(redis_client,),
+            daemon=True
+        )
+        data_streaming_thread.start()
+        logger.info("Started market data streaming")
+        
+    except Exception as e:
+        logger.error(f"Failed to initialize market data streaming: {e}")
+        # Fall back to dummy data if real data fails
+        logger.info("Falling back to dummy data simulation")
 
 def start_agents():
     """Start all agents in separate threads."""
@@ -236,6 +270,9 @@ def handle_disconnect():
     logger.info('Client disconnected')
 
 if __name__ == '__main__':
+    # Start market data streaming
+    start_market_data_streaming()
+    
     # Start agents
     start_agents()
     
