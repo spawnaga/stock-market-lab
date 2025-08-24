@@ -10,6 +10,7 @@ A cutting-edge platform that combines multiple AI agents to analyze stock market
 - Human-AI collaboration with guardrails
 - Backtesting and forward-testing capabilities
 - Advanced monitoring and performance optimization
+- Real-time ROI tracking and performance analytics
 
 ## Tech Stack
 - Backend: C++ (fast data ingestion + WebSocket)
@@ -17,6 +18,15 @@ A cutting-edge platform that combines multiple AI agents to analyze stock market
 - Frontend: TypeScript + React
 - Data Layer: PostgreSQL + Redis
 - Infrastructure: Docker + Kafka
+
+## Performance & ROI Focus
+
+This system is designed for **real-money trading performance** with:
+- **Sub-100ms decision latency** for competitive advantage
+- **Real-time ROI tracking** with comprehensive analytics
+- **Performance benchmarking** to validate trading strategies
+- **Risk management** with automated monitoring
+- **Scalable architecture** for high-volume trading
 
 ## Running the Application
 
