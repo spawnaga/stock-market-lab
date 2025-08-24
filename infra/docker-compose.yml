@@ -57,6 +57,18 @@ services:
       - redis
       - kafka
 
+  # GPU Acceleration service
+  gpu-acceleration:
+    build:
+      context: ../gpu-acceleration-rust
+      dockerfile: Dockerfile
+    ports:
+      - "8081:8080"
+    depends_on:
+      - postgres
+      - redis
+      - kafka
+
   # Frontend service
   frontend:
     build:
