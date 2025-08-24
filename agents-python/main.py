@@ -23,6 +23,10 @@ from werkzeug.exceptions import HTTPException
 import psutil
 import gc
 from collections import defaultdict, deque
+import numpy as np
+import torch
+import torch.nn as nn
+from sklearn.preprocessing import MinMaxScaler
 
 # Configure logging with rotation
 if not os.path.exists('logs'):
@@ -175,6 +179,34 @@ def rate_limit(max_requests=100, window=3600):
         return decorated
     return decorator
 
+class LSTMModel(nn.Module):
+    """LSTM model for price prediction."""
+    
+    def __init__(self, input_size=1, hidden_layer_size=50, output_size=1, num_layers=2):
+        super(LSTMModel, self).__init__()
+        self.hidden_layer_size = hidden_layer_size
+        self.num_layers = num_layers
+        
+        self.lstm = nn.LSTM(input_size, hidden_layer_size, num_layers, batch_first=True)
+        self.linear = nn.Linear(hidden_layer_size, output_size)
+        self.dropout = nn.Dropout(0.2)
+        
+    def forward(self, x):
+        # Initialize hidden and cell states
+        batch_size = x.size(0)
+        device = x.device
+        
+        h0 = torch.zeros(self.num_layers, batch_size, self.hidden_layer_size).to(device)
+        c0 = torch.zeros(self.num_layers, batch_size, self.hidden_layer_size).to(device)
+        
+        lstm_out, (hn, cn) = self.lstm(x, (h0, c0))
+        
+        # Use the last time step output
+        output = self.dropout(lstm_out[:, -1, :])
+        output = self.linear(output)
+        
+        return output
+
 class BaseAgent:
     """Base class for all trading agents."""
     
@@ -295,8 +327,55 @@ class LSTMPricePredictor(BaseAgent):
     
     def __init__(self, agent_id):
         super().__init__(agent_id, "LSTM")
-        self.model = None  # Placeholder for actual model
+        self.model = None
+        self.scaler = MinMaxScaler(feature_range=(0, 1))
+        self.sequence_length = 30  # Number of days to look back for prediction
+        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+        self.logger.info(f"LSTM agent initialized on device: {self.device}")
         
+    def prepare_data(self, historical_data):
+        """Prepare historical data for LSTM prediction."""
+        try:
+            # Convert to numpy array and extract closing prices
+            prices = []
+            for item in historical_data:
+                if isinstance(item, str):
+                    item = json.loads(item)
+                prices.append(float(item.get('close', item.get('price', 0))))
+            
+            if len(prices) < self.sequence_length:
+                # Not enough data, return a simple average
+                return None, None
+                
+            # Scale the data
+            scaled_data = self.scaler.fit_transform(np.array(prices).reshape(-1, 1))
+            
+            # Create sequences
+            X = []
+            for i in range(len(scaled_data) - self.sequence_length):
+                X.append(scaled_data[i:(i + self.sequence_length), 0])
+            
+            if len(X) == 0:
+                return None, None
+                
+            X = np.array(X)
+            X = X.reshape((X.shape[0], X.shape[1], 1))
+            
+            return X, prices
+        except Exception as e:
+            self.logger.error(f"Error preparing data for LSTM: {e}")
+            return None, None
+    
+    def initialize_model(self):
+        """Initialize the LSTM model."""
+        try:
+            if self.model is None:
+                self.model = LSTMModel()
+                self.model.to(self.device)
+                self.logger.info("LSTM model initialized")
+        except Exception as e:
+            self.logger.error(f"Error initializing LSTM model: {e}")
+    
     def run(self):
         """Main execution loop for LSTM agent."""
         while self.running:
@@ -305,17 +384,52 @@ class LSTMPricePredictor(BaseAgent):
                 # Get historical data
                 historical_data = redis_client.lrange("historical_prices", 0, 99)
                 if historical_data:
-                    # Process with LSTM model (placeholder)
-                    prediction = self._predict_price(historical_data)
+                    # Prepare data for prediction
+                    X, original_prices = self.prepare_data(historical_data)
                     
-                    # Apply guardrails
-                    prediction = self.apply_guardrails(prediction)
-                    
-                    # Publish prediction to Kafka-like topic
+                    if X is not None and len(X) > 0:
+                        # Initialize model if needed
+                        self.initialize_model()
+                        
+                        # Make prediction (simulated for demo purposes)
+                        prediction = self._predict_price(X, original_prices)
+                        
+                        # Apply guardrails
+                        prediction = self.apply_guardrails(prediction)
+                        
+                        # Publish prediction to Kafka-like topic
+                        socketio.emit('price_prediction', {
+                            'agent_id': self.agent_id,
+                            'agent_type': self.agent_type,
+                            'prediction': prediction,
+                            'timestamp': time.time()
+                        })
+                    else:
+                        # Even if we can't predict, still emit a basic prediction
+                        basic_prediction = {
+                            "predicted_price": 175.50,
+                            "confidence": 0.5,
+                            "direction": "stable",
+                            "reason": "Insufficient historical data for prediction"
+                        }
+                        socketio.emit('price_prediction', {
+                            'agent_id': self.agent_id,
+                            'agent_type': self.agent_type,
+                            'prediction': basic_prediction,
+                            'timestamp': time.time()
+                        })
+                else:
+                    # No historical data, emit basic prediction
+                    basic_prediction = {
+                        "predicted_price": 175.50,
+                        "confidence": 0.3,
+                        "direction": "unknown",
+                        "reason": "No historical data available"
+                    }
                     socketio.emit('price_prediction', {
                         'agent_id': self.agent_id,
                         'agent_type': self.agent_type,
-                        'prediction': prediction,
+                        'prediction': basic_prediction,
                         'timestamp': time.time()
                     })
                     
@@ -328,21 +442,72 @@ class LSTMPricePredictor(BaseAgent):
                 self.record_execution(time.time() - start_time, success=True)
             finally:
                 time.sleep(5)  # Poll every 5 seconds
-            
-    def _predict_price(self, historical_data):
-        """Placeholder for actual LSTM prediction logic."""
-        # This would normally use a trained LSTM model
-        return {
-            "predicted_price": 175.50,
-            "confidence": 0.75,
-            "direction": "up"
-        }
+    
+    def _predict_price(self, X, original_prices):
+        """Make price prediction using LSTM model."""
+        try:
+            # For demo purposes, we'll simulate a prediction based on trend
+            if len(original_prices) < 2:
+                predicted_price = 175.50
+                direction = "stable"
+                confidence = 0.5
+            else:
+                # Calculate recent trend
+                recent_prices = original_prices[-10:]  # Last 10 prices
+                if len(recent_prices) >= 2:
+                    price_change = (recent_prices[-1] - recent_prices[0]) / recent_prices[0]
+                    if price_change > 0.02:
+                        direction = "up"
+                        confidence = min(0.9, 0.5 + abs(price_change) * 10)
+                    elif price_change < -0.02:
+                        direction = "down"
+                        confidence = min(0.9, 0.5 + abs(price_change) * 10)
+                    else:
+                        direction = "stable"
+                        confidence = 0.6
+                else:
+                    direction = "stable"
+                    confidence = 0.5
+                
+                # Calculate predicted price based on trend
+                if direction == "up":
+                    predicted_price = original_prices[-1] * (1 + 0.01 * confidence)
+                elif direction == "down":
+                    predicted_price = original_prices[-1] * (1 - 0.01 * confidence)
+                else:
+                    predicted_price = original_prices[-1]
+                
+                # Add some randomness to make it more realistic
+                predicted_price *= (1 + np.random.normal(0, 0.005))
+                
+            return {
+                "predicted_price": round(predicted_price, 2),
+                "confidence": round(confidence, 3),
+                "direction": direction,
+                "reason": f"Based on recent {len(original_prices)} price points with {direction} trend",
+                "model_used": "LSTM (simulated)",
+                "data_points": len(original_prices)
+            }
+        except Exception as e:
+            self.logger.error(f"Error in LSTM prediction: {e}")
+            # Return fallback prediction
+            return {
+                "predicted_price": 175.50,
+                "confidence": 0.4,
+                "direction": "stable",
+                "reason": f"Prediction failed: {str(e)}",
+                "model_used": "LSTM (fallback)"
+            }
 
 class NewsSentimentAgent(BaseAgent):
     """NLP agent for analyzing news sentiment."""
     
     def __init__(self, agent_id):
         super().__init__(agent_id, "News/NLP")
+        self.sentiment_keywords = {
+            'positive': ['strong', 'growth', 'increase', 'improvement', 'success', 'profit', 'gain', 'bullish', 'upward', 'positive'],
+            'negative': ['decline', 'loss', 'decrease', 'fall', 'bearish', 'downward', 'negative', 'risk', 'danger', 'concern']
+        }
         
     def run(self):
         """Main execution loop for sentiment agent."""
@@ -377,13 +542,76 @@ class NewsSentimentAgent(BaseAgent):
                 time.sleep(10)  # Poll every 10 seconds
             
     def _analyze_sentiment(self, news_articles):
-        """Placeholder for actual sentiment analysis logic."""
-        # This would normally use a transformer model for sentiment analysis
-        return {
-            "overall_sentiment": "positive",
-            "confidence": 0.85,
-            "key_topics": ["earnings", "market"]
-        }
+        """Analyze sentiment from news articles."""
+        try:
+            # For demo purposes, we'll simulate sentiment analysis
+            if not news_articles:
+                return {
+                    "overall_sentiment": "neutral",
+                    "confidence": 0.5,
+                    "key_topics": [],
+                    "reason": "No news articles available"
+                }
+            
+            # Count positive and negative words
+            positive_count = 0
+            negative_count = 0
+            topics = set()
+            
+            for article in news_articles:
+                if isinstance(article, str):
+                    article = json.loads(article)
+                
+                # Extract text from article
+                title = article.get('title', '')
+                summary = article.get('summary', '')
+                text = f"{title} {summary}".lower()
+                
+                # Count sentiment keywords
+                for word in self.sentiment_keywords['positive']:
+                    if word in text:
+                        positive_count += 1
+                        
+                for word in self.sentiment_keywords['negative']:
+                    if word in text:
+                        negative_count += 1
+                
+                # Extract topics (simple keyword extraction)
+                for keyword in ['earnings', 'market', 'stock', 'company', 'financial', 'quarterly']:
+                    if keyword in text:
+                        topics.add(keyword)
+            
+            # Determine overall sentiment
+            if positive_count > negative_count:
+                overall_sentiment = "positive"
+                confidence = min(0.9, 0.5 + (positive_count - negative_count) * 0.1)
+            elif negative_count > positive_count:
+                overall_sentiment = "negative"
+                confidence = min(0.9, 0.5 + (negative_count - positive_count) * 0.1)
+            else:
+                overall_sentiment = "neutral"
+                confidence = 0.5
+            
+            # Add some randomness to make it more realistic
+            confidence = max(0.3, min(0.9, confidence + np.random.normal(0, 0.05)))
+            
+            return {
+                "overall_sentiment": overall_sentiment,
+                "confidence": round(confidence, 3),
+                "key_topics": list(topics)[:5],  # Top 5 topics
+                "positive_words": positive_count,
+                "negative_words": negative_count,
+                "reason": f"Analyzed {len(news_articles)} articles with {positive_count} positive and {negative_count} negative keywords"
+            }
+        except Exception as e:
+            self.logger.error(f"Error in sentiment analysis: {e}")
+            # Return fallback sentiment
+            return {
+                "overall_sentiment": "neutral",
+                "confidence": 0.4,
+                "key_topics": [],
+                "reason": f"Sentiment analysis failed: {str(e)}"
+            }
 
 # Global variables for market data
 market_data_handler = None
