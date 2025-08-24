@@ -7,6 +7,7 @@ set(CMAKE_CXX_STANDARD 17)
 find_package(PkgConfig REQUIRED)
 find_package(Boost REQUIRED COMPONENTS system thread)
 find_package(PQXX REQUIRED)
+find_package(CURL REQUIRED)
 
 # Include directories
 include_directories(${Boost_INCLUDE_DIRS})
@@ -22,4 +23,5 @@ target_link_libraries(cpp_backend
     ${Boost_LIBRARIES}
     websocketpp
     pqxx
+    ${CURL_LIBRARIES}
 )

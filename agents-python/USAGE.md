@@ -1,75 +1,142 @@
-# AI-Driven Multi-Agent Stock Market Lab
+# Enhanced Stock Market Lab - Usage Guide
 
-A cutting-edge platform that combines multiple AI agents to analyze stock markets, execute trades, and provide intelligent insights through natural language queries.
+This document explains how to use the enhanced features of the stock market lab including:
 
-## Features
-- Real-time market data streaming (OHLCV)
-- Multi-agent framework with RL, LSTM, and NLP agents
-- Strategy lab with natural language interface
-- Visualization dashboard for trading insights
-- Human-AI collaboration with guardrails
-- Backtesting and forward-testing capabilities
-- Interactive Brokers integration for live trading
-- Sentiment analysis from StockTwits and Twitter
-- Comprehensive data pipeline with calculated indicators
+1. OHLCV Data Integration
+2. Interactive Brokers Integration
+3. Sentiment Analysis from StockTwits and Twitter
+4. Trade Execution System
 
-## Tech Stack
-- Backend: C++ (fast data ingestion + WebSocket)
-- AI/Agents: Python (PyTorch, Transformers)
-- Frontend: TypeScript + React
-- Data Layer: PostgreSQL + Redis
-- Infrastructure: Docker + Kafka
+## 1. OHLCV Data Integration
 
-## Running the Application
+The C++ backend now provides real OHLCV data instead of dummy data. The data includes:
+
+- Open price
+- High price  
+- Low price
+- Close price
+- Volume
+- Timestamp
+
+### Data Format
+```json
+{
+  "symbol": "AAPL",
+  "open": 175.23,
+  "high": 176.45,
+  "low": 174.89,
+  "close": 175.98,
+  "volume": 1234567,
+  "timestamp": "1698765432123"
+}
+```
+
+## 2. Interactive Brokers Integration
+
+The system includes an Interactive Brokers agent that can process trade requests.
+
+### Trade Execution Flow
+
+1. Trades are submitted to Redis queue (`pending_trades`)
+2. IB agent polls the queue and processes trades
+3. Trades are executed via IB API (simulated in this demo)
+
+### Sending Trades
+
+Use the `trade_sender.py` script to send trades:
+
+```bash
+python trade_sender.py
+```
+
+Or programmatically:
+
+```python
+import redis
+import json
+
+redis_client = redis.Redis(host='redis', port=6379, db=0, decode_responses=True)
+
+trade = {
+    "id": "unique-trade-id",
+    "symbol": "AAPL",
+    "quantity": 10,
+    "action": "BUY",
+    "price": 175.50,
+    "account": "DU123456",
+    "timestamp": "2023-10-27T10:30:00Z"
+}
+
+redis_client.lpush("pending_trades", json.dumps(trade))
+```
+
+## 3. Sentiment Analysis
+
+Three sentiment analysis agents are now available:
+
+### News/NLP Agent
+Uses HuggingFace transformers for sentiment analysis of news articles.
+
+### StockTwits Agent
+Analyzes sentiment from StockTwits community posts.
+
+### Twitter Agent
+Analyzes sentiment from Twitter/X posts.
+
+### Data Format
+```json
+{
+  "overall_sentiment": "positive",
+  "confidence": 0.85,
+  "key_topics": ["earnings", "market"],
+  "score": 0.75,
+  "timestamp": "2023-10-27T10:30:00Z"
+}
+```
+
+## 4. Running the Enhanced System
 
 ### Prerequisites
 - Docker and Docker Compose installed
 - At least 4GB RAM available
 
 ### Quick Start
-
-1. **Clone the repository**:
 ```bash
-git clone https://github.com/spawnaga/stock-market-lab.git
-cd stock-market-lab
-```
-
-2. **Start all services**:
-```bash
+# Start all services
 docker-compose up -d
+
+# View logs
+docker-compose logs -f
 ```
 
-3. **Access the dashboard**:
-   - Open your browser and navigate to `http://localhost:3000`
+### Environment Variables for IB Integration
+Create a `.env` file in the root directory:
+```
+IB_HOST=127.0.0.1
+IB_PORT=4001
+IB_CLIENT_ID=1001
+STOCKTWITS_API_KEY=your_stocktwits_api_key_here
+TWITTER_BEARER_TOKEN=your_twitter_bearer_token_here
+```
 
-### Service Ports
-- **Frontend Dashboard**: http://localhost:3000
-- **C++ Backend**: http://localhost:8080
-- **Python Agents**: http://localhost:5000
-- **PostgreSQL**: localhost:5432
-- **Redis**: localhost:6379
+## 5. Testing the System
 
-### Development Mode
-To run in development mode with live reloading:
+### Simulate News Feed
 ```bash
-docker-compose -f docker-compose.yml up
+python news_simulator.py
 ```
 
-### Stopping Services
+### Send Sample Trades
 ```bash
-docker-compose down
+python trade_sender.py
 ```
 
-### Database Initialization
-The database will automatically initialize with the schema defined in `db/schema.sql`. 
-To reset the database:
+### Health Check
 ```bash
-docker-compose down
-docker volume prune
-docker-compose up -d
+curl http://localhost:5000/health
 ```
 
-## Architecture Overview
+## 6. Architecture Overview
 
 ```
 ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
@@ -136,74 +203,22 @@ docker-compose up -d
 └─────────────────┘    └─────────────────┘    └─────────────────┘
 ```
 
-## Interactive Brokers Integration
+## 7. Extending the System
 
-This system supports seamless integration with Interactive Brokers (IB) for live trading capabilities:
+### Adding New Data Sources
+To add a new data source:
+1. Create a new agent class inheriting from BaseAgent
+2. Implement the `run()` method to fetch and process data
+3. Add the agent to the initialization in `main.py`
 
-### IB Connection Setup
-1. **IB Gateway Installation**:
-   - Download and install IB Gateway from Interactive Brokers website
-   - Configure API access with proper credentials
-   - Enable "Use SSL" and set appropriate port numbers
+### Adding New Sentiment Sources
+To add a new sentiment source:
+1. Create a new agent class inheriting from BaseAgent
+2. Implement the `_fetch_sentiment()` method to get data from the source
+3. Add appropriate WebSocket events for communication
 
-2. **API Configuration**:
-   - Create a dedicated API user account in IB Gateway
-   - Set up proper permissions for trading and market data access
-   - Configure firewall rules to allow connections from the application
-
-3. **Integration Components**:
-   - **IB Adapter Module**: Python wrapper for TWS/IB Gateway API
-   - **Order Management**: Real-time order placement and execution
-   - **Portfolio Tracking**: Live portfolio value and position updates
-   - **Risk Controls**: Position limits and risk management
-
-### Key Features for IB Integration
-- **Real-time Market Data**: Connect to IB's market data feeds
-- **Paper Trading**: Test strategies without risking real capital
-- **Live Trading**: Execute orders directly through IB API
-- **Portfolio Management**: Track positions and PnL in real-time
-- **Risk Controls**: Implement stop-losses and position sizing
-- **Historical Data**: Access IB's extensive historical dataset
-
-### Configuration Files
-The system expects the following configuration for IB integration:
-```yaml
-ib_gateway:
-  host: "127.0.0.1"
-  port: 4001
-  client_id: 1001
-  account: "DU123456"
-  use_ssl: true
-```
-
-### Security Considerations
-- Store API credentials securely using environment variables
-- Implement proper authentication and authorization
-- Use encrypted connections for all communications
-- Regular audit of trading activities and permissions
-
-## Enhanced Features
-
-### OHLCV Data Integration
-The system now provides real OHLCV (Open, High, Low, Close, Volume) data instead of dummy data. This includes:
-- Real-time price movements
-- Volume data
-- Proper timestamping
-- Support for multiple symbols
-
-### Sentiment Analysis
-Enhanced sentiment analysis capabilities:
-- **News/NLP Agent**: Uses HuggingFace transformers for news sentiment
-- **StockTwits Agent**: Analyzes community sentiment from StockTwits
-- **Twitter Agent**: Processes sentiment from Twitter/X posts
-- All sentiment data is scored and integrated into trading decisions
-
-### Trade Execution System
-- **Trade Queue**: Trades are queued in Redis for processing
-- **IB Agent**: Handles execution of trades via Interactive Brokers
-- **Trade Confirmation**: Provides execution results back to the system
-- **Error Handling**: Robust error handling for failed trades
-
-## Usage Instructions
-
-See the [USAGE.md](agents-python/USAGE.md) file in the agents-python directory for detailed usage instructions.
+### Adding New Trading Platforms
+To add support for other trading platforms:
+1. Create a new agent class for the platform
+2. Implement connection and trade execution logic
+3. Follow the same pattern as the IB agent

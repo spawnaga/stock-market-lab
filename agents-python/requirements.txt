@@ -9,3 +9,5 @@ psycopg2-binary==2.9.7
 redis==5.0.1
 flask==2.3.2
 flask-socketio==5.3.6
+ibapi==9.81.1
+requests==2.31.0
