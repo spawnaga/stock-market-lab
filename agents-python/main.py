@@ -20,6 +20,9 @@ import secrets
 from datetime import datetime, timedelta
 import jwt
 from werkzeug.exceptions import HTTPException
+import psutil
+import gc
+from collections import defaultdict, deque
 
 # Configure logging with rotation
 if not os.path.exists('logs'):
@@ -52,6 +55,25 @@ rate_limit_store = {}
 # JWT token expiration time (in seconds)
 JWT_EXPIRATION_SECONDS = 3600
 
+# Monitoring and metrics tracking
+agent_metrics = defaultdict(lambda: {
+    'executions': 0,
+    'errors': 0,
+    'last_execution': 0,
+    'execution_times': deque(maxlen=100)
+})
+
+system_metrics = {
+    'startup_time': time.time(),
+    'total_requests': 0,
+    'error_count': 0,
+    'memory_usage_mb': 0,
+    'cpu_percent': 0
+}
+
+# Request timing tracking
+request_timings = deque(maxlen=1000)
+
 # Import market data handler
 from market_data import MarketDataHandler
 
@@ -80,6 +102,33 @@ def token_required(f):
         return f(current_user, *args, **kwargs)
     return decorated
 
+def track_metrics(f):
+    """Decorator to track request metrics and performance."""
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        start_time = time.time()
+        try:
+            system_metrics['total_requests'] += 1
+            result = f(*args, **kwargs)
+            return result
+        except Exception as e:
+            system_metrics['error_count'] += 1
+            logger.error(f"Error in {f.__name__}: {e}")
+            raise
+        finally:
+            end_time = time.time()
+            duration = end_time - start_time
+            request_timings.append(duration)
+            
+            # Update system metrics
+            try:
+                process = psutil.Process(os.getpid())
+                system_metrics['memory_usage_mb'] = process.memory_info().rss / 1024 / 1024
+                system_metrics['cpu_percent'] = process.cpu_percent()
+            except Exception as e:
+                logger.warning(f"Could not update system metrics: {e}")
+    return decorated
+
 def rate_limit(max_requests=100, window=3600):
     """Rate limiting decorator."""
     def decorator(f):
@@ -100,6 +149,7 @@ def rate_limit(max_requests=100, window=3600):
             
             # Check if limit exceeded
             if len(rate_limit_store[client_ip]) >= max_requests:
+                system_metrics['error_count'] += 1
                 return jsonify({'error': 'Rate limit exceeded'}), 429
                 
             # Add current request
@@ -118,6 +168,7 @@ class BaseAgent:
         self.running = False
         self.guardrails_enabled = True  # Enable guardrails by default
         self.logger = logging.getLogger(f"{__name__}.{self.agent_type}")
+        self.metrics = agent_metrics[self.agent_type]
         
     def start(self):
         """Start the agent."""
@@ -148,6 +199,15 @@ class BaseAgent:
                 decision['reason'] += " (Guardrail: Confidence capped at 95%)"
                 
         return decision
+        
+    def record_execution(self, execution_time, success=True):
+        """Record agent execution metrics."""
+        self.metrics['executions'] += 1
+        self.metrics['last_execution'] = time.time()
+        self.metrics['execution_times'].append(execution_time)
+        
+        if not success:
+            self.metrics['errors'] += 1
 
 class RLAgent(BaseAgent):
     """Reinforcement Learning Agent for trading decisions."""
@@ -160,6 +220,7 @@ class RLAgent(BaseAgent):
         """Main execution loop for RL agent."""
         while self.running:
             # Simulate processing market data
+            start_time = time.time()
             try:
                 # Get latest market data from Redis
                 market_data = redis_client.get("latest_market_data")
@@ -181,10 +242,13 @@ class RLAgent(BaseAgent):
                     
             except Exception as e:
                 self.logger.error(f"Error in RL agent: {e}")
+                self.record_execution(time.time() - start_time, success=False)
                 # Continue running even if one iteration fails
                 pass
-                
-            time.sleep(2)  # Poll every 2 seconds
+            else:
+                self.record_execution(time.time() - start_time, success=True)
+            finally:
+                time.sleep(2)  # Poll every 2 seconds
             
     def _make_decision(self, market_data):
         """Placeholder for actual RL decision making logic."""
@@ -205,6 +269,7 @@ class LSTMPricePredictor(BaseAgent):
     def run(self):
         """Main execution loop for LSTM agent."""
         while self.running:
+            start_time = time.time()
             try:
                 # Get historical data
                 historical_data = redis_client.lrange("historical_prices", 0, 99)
@@ -225,10 +290,13 @@ class LSTMPricePredictor(BaseAgent):
                     
             except Exception as e:
                 self.logger.error(f"Error in LSTM agent: {e}")
+                self.record_execution(time.time() - start_time, success=False)
                 # Continue running even if one iteration fails
                 pass
-                
-            time.sleep(5)  # Poll every 5 seconds
+            else:
+                self.record_execution(time.time() - start_time, success=True)
+            finally:
+                time.sleep(5)  # Poll every 5 seconds
             
     def _predict_price(self, historical_data):
         """Placeholder for actual LSTM prediction logic."""
@@ -248,6 +316,7 @@ class NewsSentimentAgent(BaseAgent):
     def run(self):
         """Main execution loop for sentiment agent."""
         while self.running:
+            start_time = time.time()
             try:
                 # Get recent news articles
                 news_articles = redis_client.lrange("news_articles", 0, 9)
@@ -268,10 +337,13 @@ class NewsSentimentAgent(BaseAgent):
                     
             except Exception as e:
                 self.logger.error(f"Error in News agent: {e}")
+                self.record_execution(time.time() - start_time, success=False)
                 # Continue running even if one iteration fails
                 pass
-                
-            time.sleep(10)  # Poll every 10 seconds
+            else:
+                self.record_execution(time.time() - start_time, success=True)
+            finally:
+                time.sleep(10)  # Poll every 10 seconds
             
     def _analyze_sentiment(self, news_articles):
         """Placeholder for actual sentiment analysis logic."""
@@ -300,6 +372,14 @@ def signal_handler(sig, frame):
     global data_streaming_thread
     if data_streaming_thread and data_streaming_thread.is_alive():
         data_streaming_thread.join(timeout=5)
+    
+    # Perform cleanup
+    try:
+        # Force garbage collection
+        gc.collect()
+        logger.info('Garbage collection completed')
+    except Exception as e:
+        logger.warning(f'Error during garbage collection: {e}')
     
     logger.info('All agents stopped gracefully')
     sys.exit(0)
@@ -395,6 +475,7 @@ def login():
         return jsonify({'error': 'Internal server error'}), 500
 
 @app.route('/health')
+@track_metrics
 @rate_limit(max_requests=1000, window=3600)  # Very generous limit for health checks
 def health_check():
     """Health check endpoint."""
@@ -402,12 +483,35 @@ def health_check():
         # Test Redis connectivity
         redis_client.ping()
         
-        # Test database connectivity (would be implemented with actual DB connection)
-        # For now, we'll just return healthy status
+        # Test system resources
+        process = psutil.Process(os.getpid())
+        memory_mb = process.memory_info().rss / 1024 / 1024
+        cpu_percent = process.cpu_percent()
         
+        # Check if all agents are running
+        agents_running = {
+            "rl": rl_agent.running,
+            "lstm": lstm_agent.running,
+            "news": news_agent.running
+        }
+        
+        # Check if data streaming is active
+        data_streaming_active = data_streaming_thread and data_streaming_thread.is_alive() if data_streaming_thread else False
+        
+        # Return comprehensive health status
         return jsonify({
             "status": "healthy", 
-            "agents": ["RL", "LSTM", "News/NLP"],
+            "agents": agents_running,
+            "data_streaming": data_streaming_active,
+            "system": {
+                "memory_mb": round(memory_mb, 2),
+                "cpu_percent": cpu_percent,
+                "uptime_seconds": time.time() - system_metrics['startup_time']
+            },
+            "metrics": {
+                "total_requests": system_metrics['total_requests'],
+                "error_count": system_metrics['error_count']
+            },
             "timestamp": time.time()
         })
     except Exception as e:
@@ -416,32 +520,111 @@ def health_check():
 
 @app.route('/metrics')
 @token_required
+@track_metrics
 @rate_limit(max_requests=50, window=3600)
 def get_metrics(current_user):
     """Get system metrics endpoint."""
     try:
-        # Collect basic metrics
-        metrics = {
+        # Collect detailed metrics
+        process = psutil.Process(os.getpid())
+        memory_mb = process.memory_info().rss / 1024 / 1024
+        cpu_percent = process.cpu_percent()
+        
+        # Calculate average request time
+        avg_request_time = sum(request_timings) / len(request_timings) if request_timings else 0
+        
+        # Get agent-specific metrics
+        agent_details = {}
+        for agent_type, metrics in agent_metrics.items():
+            # Calculate average execution time for this agent
+            avg_exec_time = sum(metrics['execution_times']) / len(metrics['execution_times']) if metrics['execution_times'] else 0
+            agent_details[agent_type] = {
+                'executions': metrics['executions'],
+                'errors': metrics['errors'],
+                'last_execution': metrics['last_execution'],
+                'avg_execution_time': round(avg_exec_time, 4),
+                'recent_execution_times': list(metrics['execution_times'])
+            }
+        
+        metrics_response = {
             "timestamp": time.time(),
             "connected_clients": len(socketio.server.manager.get_participants('/')),
-            "active_agents": {
-                "rl": rl_agent.running,
-                "lstm": lstm_agent.running,
-                "news": news_agent.running
+            "system": {
+                "memory_mb": round(memory_mb, 2),
+                "cpu_percent": cpu_percent,
+                "uptime_seconds": time.time() - system_metrics['startup_time'],
+                "requests_per_second": len(request_timings) / 60 if len(request_timings) > 0 else 0,
+                "avg_request_time": round(avg_request_time, 4)
             },
-            "memory_usage": "not implemented",
-            "cpu_usage": "not implemented"
+            "agents": agent_details,
+            "requests": {
+                "total": system_metrics['total_requests'],
+                "errors": system_metrics['error_count'],
+                "recent_timings": list(request_timings)
+            },
+            "process": {
+                "pid": os.getpid(),
+                "threads": threading.active_count()
+            }
         }
         
-        return jsonify(metrics)
+        return jsonify(metrics_response)
     except Exception as e:
         logger.error(f"Metrics error: {e}")
         return jsonify({"error": "Failed to collect metrics"}), 500
 
+@app.route('/debug/agents')
+@token_required
+@track_metrics
+@rate_limit(max_requests=20, window=3600)
+def debug_agents(current_user):
+    """Debug endpoint to get detailed agent information."""
+    try:
+        # Get detailed agent info
+        agents_info = {
+            "rl_agent": {
+                "id": rl_agent.agent_id,
+                "type": rl_agent.agent_type,
+                "running": rl_agent.running,
+                "metrics": dict(rl_agent.metrics),
+                "guardrails_enabled": rl_agent.guardrails_enabled
+            },
+            "lstm_agent": {
+                "id": lstm_agent.agent_id,
+                "type": lstm_agent.agent_type,
+                "running": lstm_agent.running,
+                "metrics": dict(lstm_agent.metrics),
+                "guardrails_enabled": lstm_agent.guardrails_enabled
+            },
+            "news_agent": {
+                "id": news_agent.agent_id,
+                "type": news_agent.agent_type,
+                "running": news_agent.running,
+                "metrics": dict(news_agent.metrics),
+                "guardrails_enabled": news_agent.guardrails_enabled
+            }
+        }
+        
+        return jsonify({
+            "agents": agents_info,
+            "system_metrics": system_metrics,
+            "request_timings": list(request_timings),
+            "timestamp": time.time()
+        })
+    except Exception as e:
+        logger.error(f"Debug agents error: {e}")
+        return jsonify({"error": "Failed to retrieve debug info"}), 500
+
 @app.route('/strategies', methods=['GET'])
-def get_strategies():
+@token_required
+@rate_limit(max_requests=100, window=3600)
+def get_strategies(current_user):
     """Get all saved strategies."""
-    return jsonify({"strategies": strategies})
+    try:
+        return jsonify({"strategies": strategies})
+    except Exception as e:
+        logger.error(f"Error getting strategies: {e}")
+        return jsonify({"error": "Failed to retrieve strategies"}), 500
 
 @app.route('/strategies', methods=['POST'])
 def create_strategy():

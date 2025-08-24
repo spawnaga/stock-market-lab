@@ -7,6 +7,7 @@ This directory contains the Python agents that implement various AI/ML models fo
 - Communication layer for WebSocket messaging
 - Real Market Data Integration
 - Enhanced Human-AI Collaboration Features
+- Advanced Monitoring and Metrics Collection
 
 ## Security Features
 
@@ -97,6 +98,33 @@ POST /login
 ```
 GET /health
 GET /metrics (requires authentication)
+GET /debug/agents (requires authentication)
 GET /strategies (requires authentication)
 POST /strategies (requires authentication)
 ```
+
+## Enhanced Monitoring and Metrics
+
+The system now includes comprehensive monitoring capabilities:
+
+### Health Checks
+- `/health` endpoint provides detailed system health information
+- Checks Redis connectivity, agent status, and system resources
+- Returns memory usage, CPU utilization, and uptime statistics
+
+### Metrics Collection
+- `/metrics` endpoint provides detailed system and agent metrics
+- Tracks request counts, error rates, and performance timings
+- Reports agent execution counts, error rates, and execution times
+- System resource monitoring (memory, CPU, threads)
+
+### Debugging Endpoints
+- `/debug/agents` provides detailed internal agent state information
+- Shows agent-specific metrics, running status, and guardrail settings
+- Useful for troubleshooting and performance analysis
+
+### Performance Tracking
+- Request timing measurements for all endpoints
+- Agent execution time tracking
+- Memory usage monitoring
+- Garbage collection awareness
