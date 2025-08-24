@@ -7,7 +7,7 @@ This service runs multiple AI agents that analyze market data and make trading d
 import threading
 import time
 import json
-from flask import Flask, jsonify
+from flask import Flask, jsonify, request
 from flask_socketio import SocketIO
 import redis
 import logging
@@ -23,6 +23,9 @@ socketio = SocketIO(app, cors_allowed_origins="*")
 
 # Redis connection for real-time data
 redis_client = redis.Redis(host='redis', port=6379, db=0, decode_responses=True)
+
+# In-memory storage for strategies (would be replaced with DB in production)
+strategies = []
 
 class BaseAgent:
     """Base class for all trading agents."""
@@ -193,6 +196,34 @@ def start_agents():
 def health_check():
     """Health check endpoint."""
     return jsonify({"status": "healthy", "agents": ["RL", "LSTM", "News/NLP"]})
+
+@app.route('/strategies', methods=['GET'])
+def get_strategies():
+    """Get all saved strategies."""
+    return jsonify({"strategies": strategies})
+
+@app.route('/strategies', methods=['POST'])
+def create_strategy():
+    """Create a new strategy."""
+    data = request.get_json()
+    
+    if not data or 'name' not in data or 'description' not in data:
+        return jsonify({"error": "Name and description are required"}), 400
+    
+    strategy = {
+        "id": f"strat-{len(strategies) + 1}",
+        "name": data['name'],
+        "description": data['description'],
+        "parameters": data.get('parameters', {}),
+        "createdAt": time.time()
+    }
+    
+    strategies.append(strategy)
+    
+    # Notify frontend about new strategy
+    socketio.emit('strategy_created', strategy)
+    
+    return jsonify(strategy), 201
 
 @socketio.on('connect')
 def handle_connect():
