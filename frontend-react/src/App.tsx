@@ -1,12 +1,7 @@
-import * as React from 'react';
+import React from 'react';
 
-const App: React.FC = () => {
-  return (
-    <div>
-      <h1>Stock Market Dashboard</h1>
-      <p>Frontend is running!</p>
-    </div>
-  );
-};
+function App() {
+  return <div>Hello World</div>;
+}
 
 export default App;
