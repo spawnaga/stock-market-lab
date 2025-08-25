@@ -12,6 +12,7 @@ A cutting-edge platform that combines multiple AI agents to analyze stock market
 - Advanced monitoring and performance optimization
 - Real-time ROI tracking and performance analytics
 - Enhanced LSTM agent with model training capabilities
+- **Valuable 17+ years of 1-minute OHLCV historical data (2008-2025)** for enhanced training and backtesting
 
 ## Tech Stack
 - Backend: C++ (fast data ingestion + WebSocket)

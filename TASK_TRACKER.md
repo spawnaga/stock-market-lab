@@ -20,6 +20,7 @@ This task tracker reflects the implementation progress of the AI-Driven Multi-Ag
 - [x] Enhanced LSTM Agent: Model persistence and improved training with early stopping
 - [x] Enhanced News/NLP Agent: Better sentiment analysis with keyword detection and topic extraction
 - [x] Backtesting Framework: Implement comprehensive backtesting capabilities
+- [x] Raw OHLCV Data Asset: 17+ years of 1-minute historical data (2008-2025) for enhanced training and backtesting
 
 ## In Progress Tasks
 
@@ -31,9 +32,9 @@ This task tracker reflects the implementation progress of the AI-Driven Multi-Ag
 ## Next Priority Tasks
 
 1. **Mobile Apps** - Develop Android and iOS applications for on-the-go trading
-2. **Backtesting Framework** - Implement comprehensive backtesting capabilities
-3. **Live Trading Integration** - Connect to brokerage accounts for real trading
-4. **ROI Analytics** - Advanced performance metrics and return tracking
+2. **Live Trading Integration** - Connect to brokerage accounts for real trading
+3. **ROI Analytics** - Advanced performance metrics and return tracking
+4. **Data Pipeline Enhancement** - Optimize data loading and preprocessing for large datasets
 
 ## Implementation Notes
 
