@@ -13,6 +13,21 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Tuple, Any, Optional
 from collections import defaultdict
 import numpy as np
+import pandas as pd
+
+# Try to import torch, but make it optional for environments without it
+try:
+    import torch
+    from sklearn.preprocessing import MinMaxScaler
+    TORCH_AVAILABLE = True
+except ImportError:
+    TORCH_AVAILABLE = False
+    # Mock classes for when torch is not available
+    class MockTensor:
+        pass
+    class MockModule:
+        pass
+    torch = None
 
 logger = logging.getLogger(__name__)
 
