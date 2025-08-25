@@ -94,8 +94,8 @@ docker-compose up -d
           ▼                      ▼                      ▼
 ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
 │   Frontend      │    │   Frontend      │    │   Frontend      │
-│   (React/TS)    │    │   (React/TS)    │    │   Frontend      │
-│                 │    │                 │    │   (CLI Tools)   │
+│   (React/TS)    │    │   (React/TS)    │    │   (CLI Tools)   │
+│                 │    │                 │    │                 │
 └─────────┬───────┘    └─────────┬───────┘    └─────────┬───────┘
           │                      │                      │
           │                      │                      │

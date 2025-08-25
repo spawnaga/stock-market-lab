@@ -4,8 +4,8 @@
 //! to improve performance for complex financial calculations.
 
 use std::net::SocketAddr;
-use std::sync::Arc;
-use tokio::sync::Mutex;
+// use std::sync::Arc;
+// use tokio::sync::Mutex;
 use warp::Filter;
 
 // Define structures for order book data
@@ -86,17 +86,19 @@ async fn simulate_order_book(request: SimulationRequest) -> Result<SimulationRes
 // API handlers
 async fn handle_simulation(
     request: SimulationRequest,
-) -> Result<impl warp::Reply, warp::Rejection> {
+) -> Result<Box<dyn warp::Reply>, warp::Rejection> {
     match simulate_order_book(request).await {
-        Ok(result) => Ok(warp::reply::json(&result)),
+        Ok(result) => Ok(Box::new(warp::reply::json(&result))),
         Err(e) => {
             eprintln!("Simulation error: {}", e);
-            Ok(warp::reply::with_status(
-                warp::reply::json(&serde_json::json!({
-                    "error": "Simulation failed",
-                    "message": e.to_string()
-                })),
-                warp::http::StatusCode::INTERNAL_SERVER_ERROR,
+            Ok(Box::new(
+                warp::reply::with_status(
+                    warp::reply::json(&serde_json::json!({
+                        "error": "Simulation failed",
+                        "message": e.to_string()
+                    })),
+                    warp::http::StatusCode::INTERNAL_SERVER_ERROR,
+                ),
             ))
         }
     }

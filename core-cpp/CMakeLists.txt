@@ -3,16 +3,25 @@ project(CPP_Backend)
 
 set(CMAKE_CXX_STANDARD 17)
 
-# Find required packages
+# ---------------------------------------------------------
+# Dependencies via pkg-config
+# ---------------------------------------------------------
 find_package(PkgConfig REQUIRED)
 find_package(Boost REQUIRED COMPONENTS system thread)
-find_package(PQXX REQUIRED)
 
-# Include directories
-include_directories(${Boost_INCLUDE_DIRS})
-include_directories(/usr/include/jsoncpp)
+# PostgreSQL C++ (pqxx)
+pkg_check_modules(PQXX REQUIRED libpqxx)
+include_directories(${PQXX_INCLUDE_DIRS})
+link_directories(${PQXX_LIBRARY_DIRS})
 
-# Add executable
+# JsonCpp
+pkg_check_modules(JSONCPP REQUIRED jsoncpp)
+include_directories(${JSONCPP_INCLUDE_DIRS})
+link_directories(${JSONCPP_LIBRARY_DIRS})
+
+# ---------------------------------------------------------
+# Build target
+# ---------------------------------------------------------
 add_executable(cpp_backend 
     src/main.cpp
 )
@@ -20,6 +29,6 @@ add_executable(cpp_backend
 # Link libraries
 target_link_libraries(cpp_backend 
     ${Boost_LIBRARIES}
-    websocketpp
-    pqxx
+    ${PQXX_LIBRARIES}
+    ${JSONCPP_LIBRARIES}
 )
