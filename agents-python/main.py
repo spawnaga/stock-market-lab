@@ -94,6 +94,9 @@ PERFORMANCE_SETTINGS = {
 # Import market data handler
 from market_data import MarketDataHandler
 
+# Import backtesting framework
+from backtesting_framework import BacktestingEngine, create_default_strategies, BacktestResult
+
 def token_required(f):
     """Decorator to require valid JWT token for protected routes."""
     @wraps(f)
@@ -732,6 +735,9 @@ rl_agent = RLAgent("rl-001")
 lstm_agent = LSTMPricePredictor("lstm-001")
 news_agent = NewsSentimentAgent("news-001")
 
+# Initialize backtesting engine
+backtesting_engine = BacktestingEngine(redis_client)
+
 def start_market_data_streaming():
     """Start streaming real market data."""
     global market_data_handler, data_streaming_thread
@@ -1045,6 +1051,152 @@ def toggle_guardrails(agent_id, setting):
             return jsonify({"error": "Invalid setting. Use 'enable' or 'disable'"}), 400
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+@app.route('/backtest/strategies', methods=['GET'])
+@token_required
+@track_metrics
+@rate_limit(max_requests=20, window=3600)
+def get_available_strategies(current_user):
+    """Get list of available strategies for backtesting."""
+    try:
+        strategies = create_default_strategies()
+        strategy_list = [{"name": s.name, "type": type(s).__name__} for s in strategies]
+        return jsonify({"strategies": strategy_list}), 200
+    except Exception as e:
+        logger.error(f"Error getting strategies: {e}")
+        return jsonify({"error": "Failed to retrieve strategies"}), 500
+
+@app.route('/backtest/run', methods=['POST'])
+@token_required
+@track_metrics
+@rate_limit(max_requests=10, window=3600)
+def run_backtest(current_user):
+    """Run a backtest for a given strategy."""
+    try:
+        data = request.get_json()
+        
+        if not data:
+            return jsonify({"error": "Request data required"}), 400
+            
+        strategy_name = data.get('strategy_name')
+        symbol = data.get('symbol', 'AAPL')
+        start_date_str = data.get('start_date')
+        end_date_str = data.get('end_date')
+        initial_capital = data.get('initial_capital', 10000.0)
+        
+        if not strategy_name or not start_date_str or not end_date_str:
+            return jsonify({"error": "strategy_name, start_date, and end_date are required"}), 400
+            
+        # Parse dates
+        start_date = datetime.fromisoformat(start_date_str.replace('Z', '+00:00'))
+        end_date = datetime.fromisoformat(end_date_str.replace('Z', '+00:00'))
+        
+        # Create strategy
+        strategies = create_default_strategies(initial_capital)
+        strategy = None
+        for s in strategies:
+            if s.name == strategy_name:
+                strategy = s
+                break
+                
+        if not strategy:
+            return jsonify({"error": f"Strategy '{strategy_name}' not found"}), 404
+            
+        # Run backtest
+        result = backtesting_engine.run_backtest(strategy, symbol, start_date, end_date)
+        
+        # Format result for response
+        response_data = {
+            "strategy_name": result.strategy_name,
+            "start_date": result.start_date.isoformat() if result.start_date else None,
+            "end_date": result.end_date.isoformat() if result.end_date else None,
+            "initial_capital": result.initial_capital,
+            "final_capital": result.final_capital,
+            "total_return": result.total_return,
+            "annualized_return": result.annualized_return,
+            "max_drawdown": result.max_drawdown,
+            "sharpe_ratio": result.sharpe_ratio,
+            "trade_count": result.trade_count,
+            "win_count": result.win_count,
+            "loss_count": result.loss_count,
+            "avg_win": result.avg_win,
+            "avg_loss": result.avg_loss,
+            "equity_curve": result.equity_curve,
+            "trade_details": result.trades[:10]  # First 10 trades for brevity
+        }
+        
+        return jsonify(response_data), 200
+        
+    except Exception as e:
+        logger.error(f"Error running backtest: {e}")
+        return jsonify({"error": f"Failed to run backtest: {str(e)}"}), 500
+
+@app.route('/backtest/compare', methods=['POST'])
+@token_required
+@track_metrics
+@rate_limit(max_requests=5, window=3600)
+def compare_strategies(current_user):
+    """Compare multiple strategies against the same data."""
+    try:
+        data = request.get_json()
+        
+        if not data:
+            return jsonify({"error": "Request data required"}), 400
+            
+        strategy_names = data.get('strategy_names', [])
+        symbol = data.get('symbol', 'AAPL')
+        start_date_str = data.get('start_date')
+        end_date_str = data.get('end_date')
+        initial_capital = data.get('initial_capital', 10000.0)
+        
+        if not strategy_names or not start_date_str or not end_date_str:
+            return jsonify({"error": "strategy_names, start_date, and end_date are required"}), 400
+            
+        # Parse dates
+        start_date = datetime.fromisoformat(start_date_str.replace('Z', '+00:00'))
+        end_date = datetime.fromisoformat(end_date_str.replace('Z', '+00:00'))
+        
+        # Create strategies
+        strategies = create_default_strategies(initial_capital)
+        selected_strategies = []
+        for s in strategies:
+            if s.name in strategy_names:
+                selected_strategies.append(s)
+                
+        if not selected_strategies:
+            return jsonify({"error": "No valid strategies found"}), 404
+            
+        # Run comparison
+        results = backtesting_engine.compare_strategies(selected_strategies, symbol, start_date, end_date)
+        
+        # Format results for response
+        formatted_results = {}
+        for strategy_name, result in results.items():
+            if result:
+                formatted_results[strategy_name] = {
+                    "strategy_name": result.strategy_name,
+                    "start_date": result.start_date.isoformat() if result.start_date else None,
+                    "end_date": result.end_date.isoformat() if result.end_date else None,
+                    "initial_capital": result.initial_capital,
+                    "final_capital": result.final_capital,
+                    "total_return": result.total_return,
+                    "annualized_return": result.annualized_return,
+                    "max_drawdown": result.max_drawdown,
+                    "sharpe_ratio": result.sharpe_ratio,
+                    "trade_count": result.trade_count,
+                    "win_count": result.win_count,
+                    "loss_count": result.loss_count,
+                    "avg_win": result.avg_win,
+                    "avg_loss": result.avg_loss
+                }
+            else:
+                formatted_results[strategy_name] = {"error": "Backtest failed"}
+        
+        return jsonify({"comparison": formatted_results}), 200
+        
+    except Exception as e:
+        logger.error(f"Error comparing strategies: {e}")
+        return jsonify({"error": f"Failed to compare strategies: {str(e)}"}), 500
 
 @app.route('/strategies', methods=['GET'])
 @token_required

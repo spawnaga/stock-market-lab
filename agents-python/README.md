@@ -128,3 +128,55 @@ The system now includes comprehensive monitoring capabilities:
 - Agent execution time tracking
 - Memory usage monitoring
 - Garbage collection awareness
+
+## Backtesting Framework
+
+The system now includes a comprehensive backtesting framework that allows users to test trading strategies against historical market data:
+
+### Key Features
+- Support for multiple trading strategies (SMA, LSTM-based)
+- Historical data loading from Redis
+- Comprehensive performance metrics calculation
+- Strategy comparison capabilities
+- Trade execution simulation
+- Detailed reporting and visualization support
+
+### API Endpoints
+
+#### Get Available Strategies
+```
+GET /backtest/strategies
+```
+
+#### Run Single Backtest
+```
+POST /backtest/run
+{
+  "strategy_name": "SMA_10_30",
+  "symbol": "AAPL",
+  "start_date": "2023-01-01T00:00:00Z",
+  "end_date": "2023-12-31T23:59:59Z",
+  "initial_capital": 10000.0
+}
+```
+
+#### Compare Strategies
+```
+POST /backtest/compare
+{
+  "strategy_names": ["SMA_10_30", "SMA_5_20"],
+  "symbol": "AAPL",
+  "start_date": "2023-01-01T00:00:00Z",
+  "end_date": "2023-12-31T23:59:59Z",
+  "initial_capital": 10000.0
+}
+```
+
+### Performance Metrics
+The framework calculates various performance metrics:
+- Total Return
+- Annualized Return
+- Maximum Drawdown
+- Sharpe Ratio
+- Win/Loss Statistics
+- Trade Count
