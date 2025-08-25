@@ -5,63 +5,73 @@
 name = "order-book-simulator"
 version = "0.1.0"
 dependencies = [
- "async-trait 0.1.0",
+ "async-trait 0.1.77",
  "cuda 0.1.0",
  "cudarc 0.1.0",
  "env_logger 0.10.0",
- "log 0.4.0",
- "serde 1.0.0",
- "serde_json 1.0.0",
- "tokio 1.0.0",
- "warp 0.3.0",
+ "log 0.4.20",
+ "serde 1.0.197",
+ "serde_json 1.0.117",
+ "tokio 1.37.0",
+ "warp 0.3.7",
 ]
 
 [[package]]
 name = "async-trait"
-version = "0.1.0"
+version = "0.1.77"
 source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "checksum-for-async-trait"
 
 [[package]]
 name = "cuda"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "checksum-for-cuda"
 
 [[package]]
 name = "cudarc"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "checksum-for-cudarc"
 
 [[package]]
 name = "env_logger"
 version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "checksum-for-env_logger"
 
 [[package]]
 name = "log"
-version = "0.4.0"
+version = "0.4.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "checksum-for-log"
 
 [[package]]
 name = "serde"
-version = "1.0.0"
+version = "1.0.197"
 source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "checksum-for-serde"
 
 [[package]]
 name = "serde_json"
-version = "1.0.0"
+version = "1.0.117"
 source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "checksum-for-serde_json"
 
 [[package]]
 name = "tokio"
-version = "1.0.0"
+version = "1.37.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "checksum-for-tokio"
 
 [[package]]
 name = "warp"
-version = "0.3.0"
+version = "0.3.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "checksum-for-warp"
 
 [[package]]
 name = "tokio-test"
-version = "0.4.0"
+version = "0.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "checksum-for-tokio-test"
