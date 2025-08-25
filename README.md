@@ -50,10 +50,10 @@ docker-compose up -d
 ```
 
 3. **Access the dashboard**:
-   - Open your browser and navigate to `http://localhost:3000`
+   - Open your browser and navigate to `http://localhost:3001`
 
 ### Service Ports
-- **Frontend Dashboard**: http://localhost:3000
+- **Frontend Dashboard**: http://localhost:3001
 - **C++ Backend**: http://localhost:8080
 - **Python Agents**: http://localhost:5000
 - **PostgreSQL**: localhost:5432
