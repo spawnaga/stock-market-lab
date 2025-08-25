@@ -18,6 +18,11 @@ RUN if [ -f package-lock.json ]; then \
 # Copy source code
 COPY . .
 
+# Debug: Show what files we have
+RUN echo "=== FILES IN SRC ===" && ls -la src/ && \
+    echo "=== FILES IN PUBLIC ===" && ls -la public/ && \
+    echo "=== CONTENT OF APP.TSX ===" && cat src/App.tsx
+
 # Build the application
 RUN npm run build
 
