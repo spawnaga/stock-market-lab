@@ -46,6 +46,7 @@ cd stock-market-lab
 
 2. **Start all services**:
 ```bash
+cd infra
 docker-compose up -d
 ```
 
@@ -62,11 +63,13 @@ docker-compose up -d
 ### Development Mode
 To run in development mode with live reloading:
 ```bash
+cd infra
 docker-compose -f docker-compose.yml up
 ```
 
 ### Stopping Services
 ```bash
+cd infra
 docker-compose down
 ```
 
@@ -74,6 +77,7 @@ docker-compose down
 The database will automatically initialize with the schema defined in `db/schema.sql`. 
 To reset the database:
 ```bash
+cd infra
 docker-compose down
 docker volume prune
 docker-compose up -d
