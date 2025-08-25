@@ -27,6 +27,7 @@ import numpy as np
 import torch
 import torch.nn as nn
 from sklearn.preprocessing import MinMaxScaler
+import pickle
 
 # Configure logging with rotation
 if not os.path.exists('logs'):
@@ -336,6 +337,56 @@ class LSTMPricePredictor(BaseAgent):
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.logger.info(f"LSTM agent initialized on device: {self.device}")
         self.model_trained = False
+        self.model_save_path = f"models/lstm_model_{agent_id}.pth"
+        self.scaler_save_path = f"models/scaler_{agent_id}.pkl"
+        
+        # Create models directory if it doesn't exist
+        os.makedirs("models", exist_ok=True)
+        
+        # Try to load existing model and scaler
+        self.load_model_and_scaler()
+        
+    def save_model_and_scaler(self):
+        """Save the trained model and scaler to disk."""
+        try:
+            if self.model is not None:
+                # Save model state dict
+                torch.save(self.model.state_dict(), self.model_save_path)
+                self.logger.info(f"Model saved to {self.model_save_path}")
+                
+                # Save scaler
+                with open(self.scaler_save_path, 'wb') as f:
+                    pickle.dump(self.scaler, f)
+                self.logger.info(f"Scaler saved to {self.scaler_save_path}")
+                
+                return True
+        except Exception as e:
+            self.logger.error(f"Error saving model and scaler: {e}")
+            return False
+            
+    def load_model_and_scaler(self):
+        """Load a previously trained model and scaler from disk."""
+        try:
+            # Check if model file exists
+            if os.path.exists(self.model_save_path):
+                # Load model
+                self.model = LSTMModel()
+                self.model.to(self.device)
+                self.model.load_state_dict(torch.load(self.model_save_path, map_location=self.device))
+                self.model.eval()
+                self.model_trained = True
+                self.logger.info(f"Model loaded from {self.model_save_path}")
+                
+            # Check if scaler file exists
+            if os.path.exists(self.scaler_save_path):
+                with open(self.scaler_save_path, 'rb') as f:
+                    self.scaler = pickle.load(f)
+                self.logger.info(f"Scaler loaded from {self.scaler_save_path}")
+                
+            return True
+        except Exception as e:
+            self.logger.warning(f"Error loading model and scaler (will train fresh): {e}")
+            return False
         
     def prepare_data(self, historical_data):
         """Prepare historical data for LSTM prediction."""
@@ -397,21 +448,51 @@ class LSTMPricePredictor(BaseAgent):
             criterion = nn.MSELoss()
             optimizer = torch.optim.Adam(self.model.parameters(), lr=0.001)
             
-            # Training loop
+            # Only train if we have sufficient data and haven't trained recently
+            if len(X) < 10:
+                self.logger.warning("Insufficient data for training, skipping training")
+                return False
+            
+            # Training loop with early stopping criteria
             self.model.train()
-            for epoch in range(50):  # 50 epochs should be enough for demo
+            best_loss = float('inf')
+            patience_counter = 0
+            patience = 10  # Early stopping patience
+            
+            for epoch in range(100):  # Increased epochs for better training
                 optimizer.zero_grad()
                 outputs = self.model(X_tensor)
                 loss = criterion(outputs.squeeze(), y_tensor)
                 loss.backward()
                 optimizer.step()
                 
-                if epoch % 10 == 0:
-                    self.logger.debug(f"LSTM Training Epoch [{epoch}/50], Loss: {loss.item():.6f}")
+                # Early stopping
+                if loss.item() < best_loss:
+                    best_loss = loss.item()
+                    patience_counter = 0
+                    # Save best model state
+                    best_model_state = self.model.state_dict().copy()
+                else:
+                    patience_counter += 1
+                    
+                if epoch % 20 == 0:
+                    self.logger.debug(f"LSTM Training Epoch [{epoch}/100], Loss: {loss.item():.6f}")
+                
+                if patience_counter >= patience:
+                    self.logger.info(f"Early stopping at epoch {epoch}")
+                    break
+            
+            # Restore best model state
+            if 'best_model_state' in locals():
+                self.model.load_state_dict(best_model_state)
             
             self.model.eval()
             self.model_trained = True
-            self.logger.info("LSTM model training completed")
+            
+            # Save the trained model
+            self.save_model_and_scaler()
+            
+            self.logger.info("LSTM model training completed with improved performance")
             return True
             
         except Exception as e:
@@ -1404,6 +1485,40 @@ def toggle_guardrails(current_user, agent_id, setting):
     except Exception as e:
         logger.error(f"Error toggling guardrails: {e}")
         return jsonify({"error": "Failed to toggle guardrails"}), 500
+
+@app.route('/lstm/retrain', methods=['POST'])
+@token_required
+@track_metrics
+@rate_limit(max_requests=5, window=3600)
+def retrain_lstm_model(current_user):
+    """Manually trigger LSTM model retraining with current data."""
+    try:
+        # Get historical data
+        historical_data = redis_client.lrange("historical_prices", 0, 99)
+        if not historical_data:
+            return jsonify({"error": "No historical data available for retraining"}), 400
+            
+        # Prepare data for training
+        X, y, original_prices = lstm_agent.prepare_data(historical_data)
+        
+        if X is None or len(X) == 0:
+            return jsonify({"error": "Insufficient data for retraining"}), 400
+            
+        # Retrain the model
+        success = lstm_agent.train_model(X, y)
+        
+        if success:
+            return jsonify({
+                "message": "LSTM model retraining completed successfully",
+                "model_trained": lstm_agent.model_trained,
+                "data_points_used": len(original_prices)
+            }), 200
+        else:
+            return jsonify({"error": "Failed to retrain LSTM model"}), 500
+            
+    except Exception as e:
+        logger.error(f"Error retraining LSTM model: {e}")
+        return jsonify({"error": "Failed to retrain LSTM model"}), 500
 
 @app.route('/lstm/status')
 @token_required
