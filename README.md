@@ -11,6 +11,7 @@ A cutting-edge platform that combines multiple AI agents to analyze stock market
 - Backtesting and forward-testing capabilities
 - Advanced monitoring and performance optimization
 - Real-time ROI tracking and performance analytics
+- Enhanced LSTM agent with model training capabilities
 
 ## Tech Stack
 - Backend: C++ (fast data ingestion + WebSocket)
