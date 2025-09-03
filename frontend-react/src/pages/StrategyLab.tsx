@@ -54,7 +54,7 @@ const StrategyLab: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setIsGenerating(true;
+    setIsGenerating(true);
 
     // Simulate API call to backend
     setTimeout(() => {
