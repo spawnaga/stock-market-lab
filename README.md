@@ -38,38 +38,50 @@ This system is designed for **real-money trading performance** with:
 
 ### Quick Start
 
-1. **Clone the repository**:
+1. Clone the repository
 ```bash
 git clone https://github.com/spawnaga/stock-market-lab.git
 cd stock-market-lab
 ```
 
-2. **Start all services**:
+2. Start all services (choose one)
+- Windows PowerShell:
+```powershell
+./start.ps1
+```
+- Windows CMD:
+```bat
+start.bat
+```
+- macOS/Linux:
 ```bash
-cd infra
-docker-compose up -d
+chmod +x start.sh
+./start.sh
+```
+- Or with Docker Compose directly:
+```bash
+docker-compose up --build
 ```
 
-3. **Access the dashboard**:
-   - Open your browser and navigate to `http://localhost:3001`
+3. Access the dashboard
+- Open your browser and go to: http://localhost:3001
 
 ### Service Ports
-- **Frontend Dashboard**: http://localhost:3001
-- **C++ Backend**: http://localhost:8080
-- **Python Agents**: http://localhost:5000
-- **PostgreSQL**: localhost:5432
-- **Redis**: localhost:6379
+- Frontend Dashboard: http://localhost:3001
+- C++ Backend API: http://localhost:8080
+- GPU Acceleration Service: http://localhost:8081
+- PostgreSQL: localhost:5432
+- Redis: localhost:6379
+- Kafka: localhost:9092 (internal), localhost:29092 (host)
 
 ### Development Mode
-To run in development mode with live reloading:
+To run in development mode with live reloading (foreground logs):
 ```bash
-cd infra
-docker-compose -f docker-compose.yml up
+docker-compose up
 ```
 
 ### Stopping Services
 ```bash
-cd infra
 docker-compose down
 ```
 

@@ -1,0 +1,286 @@
+.App {
+  text-align: center;
+  min-height: 100vh;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+}
+
+.status-bar {
+  background: rgba(0, 0, 0, 0.1);
+  padding: 1rem 2rem;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 2rem;
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.status-indicator {
+  padding: 8px 16px;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.1);
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.status-indicator.healthy {
+  background: rgba(76, 175, 80, 0.2);
+  border: 1px solid rgba(76, 175, 80, 0.5);
+}
+
+.status-indicator.unhealthy {
+  background: rgba(244, 67, 54, 0.2);
+  border: 1px solid rgba(244, 67, 54, 0.5);
+}
+
+.App-main {
+  padding: 2rem;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.loading {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  height: 100vh;
+  gap: 2rem;
+}
+
+.spinner {
+  width: 50px;
+  height: 50px;
+  border: 5px solid rgba(255, 255, 255, 0.3);
+  border-top: 5px solid #fff;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.error-banner {
+  background: rgba(244, 67, 54, 0.2);
+  border: 1px solid rgba(244, 67, 54, 0.5);
+  border-radius: 8px;
+  padding: 1rem;
+  margin-bottom: 2rem;
+}
+
+.services-overview {
+  margin: 3rem 0;
+}
+
+.services-overview h2 {
+  margin-bottom: 2rem;
+  font-size: 2rem;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.services-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 1.5rem;
+  margin: 2rem 0;
+}
+
+.service-card {
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(10px);
+  border-radius: 12px;
+  padding: 2rem;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.service-card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+}
+
+.service-card h3 {
+  margin: 0 0 1rem 0;
+  font-size: 1.3rem;
+}
+
+.service-status {
+  display: inline-block;
+  padding: 6px 12px;
+  border-radius: 16px;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.service-status.online {
+  background: rgba(76, 175, 80, 0.3);
+  color: #c8e6c9;
+}
+
+.service-status.offline {
+  background: rgba(244, 67, 54, 0.3);
+  color: #ffcdd2;
+}
+
+.market-data {
+  margin: 3rem 0;
+}
+
+.market-data h2 {
+  margin-bottom: 2rem;
+  font-size: 2rem;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.market-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: 1.5rem;
+  margin: 2rem 0;
+}
+
+.market-card {
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(10px);
+  border-radius: 12px;
+  padding: 1.5rem;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  transition: transform 0.3s ease;
+}
+
+.market-card:hover {
+  transform: translateY(-3px);
+}
+
+.market-card h3 {
+  margin: 0 0 1rem 0;
+  font-size: 1.2rem;
+  color: #fff;
+}
+
+.price {
+  font-size: 1.5rem;
+  font-weight: 700;
+  margin-bottom: 0.5rem;
+  color: #fff;
+}
+
+.change {
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.change.positive {
+  color: #4caf50;
+}
+
+.change.negative {
+  color: #f44336;
+}
+
+.no-data {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  padding: 3rem;
+  margin: 2rem 0;
+}
+
+.architecture {
+  margin: 4rem 0;
+}
+
+.architecture h2 {
+  margin-bottom: 2rem;
+  font-size: 2rem;
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.architecture-diagram {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin: 2rem 0;
+}
+
+.arch-component {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 12px;
+  padding: 1.5rem;
+  min-width: 150px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.arch-component h4 {
+  margin: 0 0 0.5rem 0;
+  font-size: 1.1rem;
+  color: #fff;
+}
+
+.arch-component p {
+  margin: 0;
+  font-size: 0.85rem;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.arch-arrow {
+  font-size: 1.5rem;
+  color: rgba(255, 255, 255, 0.6);
+  margin: 0 1rem;
+}
+
+.App-footer {
+  background: rgba(0, 0, 0, 0.2);
+  padding: 2rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  margin-top: 4rem;
+}
+
+.App-footer p {
+  margin: 0;
+  color: rgba(255, 255, 255, 0.7);
+  text-align: center;
+}
+
+.timestamp {
+  font-size: 0.85rem;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+/* Responsive design */
+@media (max-width: 768px) {
+  .status-bar {
+    flex-direction: column;
+    gap: 1rem;
+    padding: 1rem;
+  }
+
+  .services-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .architecture-diagram {
+    flex-direction: column;
+  }
+
+  .arch-arrow {
+    transform: rotate(90deg);
+  }
+}
+
+@media (max-width: 480px) {
+  .App-main {
+    padding: 1rem;
+  }
+
+  .market-grid {
+    grid-template-columns: 1fr;
+  }
+}
