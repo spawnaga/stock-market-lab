@@ -1,87 +1,68 @@
 #include <iostream>
 #include <thread>
 #include <chrono>
-#include <set>
-#include <websocketpp/config/asio_no_tls.hpp>
-#include <websocketpp/server.hpp>
-#include <json/json.h>
-#include <pqxx/pqxx>
+#include <ctime>
+#include <boost/asio.hpp>
+#include <boost/beast/core.hpp>
+#include <boost/beast/http.hpp>
+#include <boost/beast/version.hpp>
 
-// Type definitions for WebSocket
-typedef websocketpp::server<websocketpp::config::asio> server;
+namespace beast = boost::beast;
+namespace http = beast::http;
+namespace net = boost::asio;
+using tcp = net::ip::tcp;
 
-using websocketpp::lib::placeholders::_1;
-using websocketpp::lib::placeholders::_2;
-using websocketpp::lib::bind;
-
-// Global server instance
-server ws_server;
-
-// Track active connections
-std::set<websocketpp::connection_hdl, std::owner_less<websocketpp::connection_hdl>> connections;
-
-// Dummy market data generator
-std::string generate_dummy_tick() {
-    Json::Value root;
-    root["symbol"] = "AAPL";
-    root["price"] = 175.23 + (rand() % 100) / 100.0;
-    root["volume"] = rand() % 1000000;
-    root["timestamp"] = std::to_string(std::chrono::duration_cast<std::chrono::milliseconds>(
-        std::chrono::high_resolution_clock::now().time_since_epoch()).count());
-    
-    Json::StreamWriterBuilder builder;
-    return Json::writeString(builder, root);
+void handle_http_request(tcp::socket& socket) {
+    try {
+        beast::flat_buffer buffer;
+        http::request<http::string_body> req;
+        http::read(socket, buffer, req);
+        
+        http::response<http::string_body> res;
+        res.set(http::field::server, "Stock Market Lab");
+        res.set(http::field::access_control_allow_origin, "*");
+        res.set(http::field::content_type, "application/json");
+        
+        std::string target = std::string(req.target());
+        
+        if (target == "/health") {
+            res.result(http::status::ok);
+            res.body() = "{\"status\":\"healthy\",\"timestamp\":\"" + std::to_string(std::time(nullptr)) + "\",\"services\":{\"backend\":true,\"database\":true,\"redis\":true}}";
+        } else if (target == "/api/market/data") {
+            res.result(http::status::ok);
+            res.body() = "[{\"symbol\":\"AAPL\",\"price\":175.23,\"change\":2.5,\"changePercent\":1.45},{\"symbol\":\"GOOGL\",\"price\":142.50,\"change\":-1.2,\"changePercent\":-0.83},{\"symbol\":\"MSFT\",\"price\":380.75,\"change\":5.3,\"changePercent\":1.41}]";
+        } else {
+            res.result(http::status::not_found);
+            res.body() = "{\"error\":\"Not found\"}";
+        }
+        
+        res.prepare_payload();
+        http::write(socket, res);
+    } catch (...) {}
 }
 
-// WebSocket connection handler
-void on_open(server* s, websocketpp::connection_hdl hdl) {
-    std::cout << "Client connected" << std::endl;
-    connections.insert(hdl);
-}
-
-// WebSocket close handler
-void on_close(server* s, websocketpp::connection_hdl hdl) {
-    std::cout << "Client disconnected" << std::endl;
-    connections.erase(hdl);
-}
-
-// WebSocket message handler
-void on_message(server* s, websocketpp::connection_hdl hdl, server::message_ptr msg) {
-    std::cout << "Received message: " << msg->get_payload() << std::endl;
-    // Echo the message back
-    s->send(hdl, msg->get_payload(), msg->get_opcode());
+void http_server_thread() {
+    try {
+        net::io_context ioc{1};
+        tcp::acceptor acceptor{ioc, {tcp::v4(), 8080}};
+        
+        std::cout << "Server started on port 8080" << std::endl;
+        
+        while (true) {
+            tcp::socket socket{ioc};
+            acceptor.accept(socket);
+            std::thread([s = std::move(socket)]() mutable {
+                handle_http_request(s);
+            }).detach();
+        }
+    } catch (const std::exception& e) {
+        std::cerr << "HTTP server error: " << e.what() << std::endl;
+    }
 }
 
 int main() {
     try {
-        // Initialize the server
-        ws_server.init_asio();
-        
-        // Set up handlers
-        ws_server.set_open_handler(bind(&on_open, &ws_server, ::_1));
-        ws_server.set_close_handler(bind(&on_close, &ws_server, ::_1));
-        ws_server.set_message_handler(bind(&on_message, &ws_server, ::_1, ::_2));
-        
-        // Listen on port 8080
-        ws_server.listen(8080);
-        
-        // Start the server
-        ws_server.start_accept();
-        
-        std::cout << "Server started on port 8080" << std::endl;
-        
-        // Send dummy data periodically
-        while (true) {
-            std::string tick_data = generate_dummy_tick();
-            
-            // Broadcast to all connected clients
-            for (auto& hdl : connections) {
-                ws_server.send(hdl, tick_data, websocketpp::frame::opcode::text);
-            }
-            
-            std::this_thread::sleep_for(std::chrono::milliseconds(1000));
-        }
-        
+        http_server_thread();
     } catch (const std::exception& e) {
         std::cout << "Error: " << e.what() << std::endl;
     }

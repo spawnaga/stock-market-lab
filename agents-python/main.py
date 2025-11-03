@@ -1057,81 +1057,9 @@ def debug_agents(current_user):
         logger.error(f"Debug agents error: {e}")
         return jsonify({"error": "Failed to retrieve debug info"}), 500
 
-@app.route('/strategies', methods=['GET'])
-@token_required
-@rate_limit(max_requests=100, window=3600)
-def get_strategies(current_user):
-    """Get all saved strategies."""
-    try:
-        return jsonify({"strategies": strategies})
-    except Exception as e:
-        logger.error(f"Error getting strategies: {e}")
-        return jsonify({"error": "Failed to retrieve strategies"}), 500
 
-@app.route('/strategies', methods=['POST'])
-def create_strategy():
-    """Create a new strategy."""
-    data = request.get_json()
-    
-    if not data or 'name' not in data or 'description' not in data:
-        return jsonify({"error": "Name and description are required"}), 400
-    
-    strategy = {
-        "id": f"strat-{len(strategies) + 1}",
-        "name": data['name'],
-        "description": data['description'],
-        "parameters": data.get('parameters', {}),
-        "createdAt": time.time()
-    }
-    
-    strategies.append(strategy)
-    
-    # Notify frontend about new strategy
-    socketio.emit('strategy_created', strategy)
-    
-    return jsonify(strategy), 201
 
-@app.route('/override/<agent_id>', methods=['POST'])
-def override_agent_decision(agent_id):
-    """Allow human override of agent decisions."""
-    data = request.get_json()
-    
-    if not data or 'override_action' not in data:
-        return jsonify({"error": "Override action is required"}), 400
-    
-    # In a real implementation, this would validate the override and apply it
-    override_data = {
-        "agent_id": agent_id,
-        "override_action": data['override_action'],
-        "override_reason": data.get('reason', ''),
-        "timestamp": time.time(),
-        "user": data.get('user', 'human')
-    }
-    
-    # Emit override event to frontend
-    socketio.emit('agent_override', override_data)
-    
-    return jsonify({"status": "override applied", "data": override_data}), 200
 
-@app.route('/guardrails/<agent_id>/<setting>', methods=['PUT'])
-def toggle_guardrails(agent_id, setting):
-    """Enable/disable guardrails for a specific agent."""
-    try:
-        # Find the agent and toggle guardrails
-        # This is a simplified implementation - in practice, you'd have a registry of agents
-        if setting.lower() in ['enable', 'disable']:
-            # In a real implementation, we'd maintain a registry of agents
-            # For now, we'll just return success
-            return jsonify({
-                "status": "guardrails toggled",
-                "agent_id": agent_id,
-                "setting": setting,
-                "message": f"Guardrails {'enabled' if setting.lower() == 'enable' else 'disabled'} for agent {agent_id}"
-            }), 200
-        else:
-            return jsonify({"error": "Invalid setting. Use 'enable' or 'disable'"}), 400
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
 
 @app.route('/backtest/strategies', methods=['GET'])
 @token_required
@@ -1560,4 +1488,4 @@ if __name__ == '__main__':
     start_agents()
     
     # Run the Flask-SocketIO server
-    socketio.run(app, host='0.0.0.0', port=5000, debug=False)
+    socketio.run(app, host='0.0.0.0', port=5000, debug=False, allow_unsafe_werkzeug=True)

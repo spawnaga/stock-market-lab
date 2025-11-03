@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, BarChart, Bar } from 'react-chartjs-2';
+import { Line } from 'react-chartjs-2';
 import { Chart as ChartJS, CategoryScale, LinearScale, PointElement, LineElement, BarElement, Title, Tooltip as ChartTooltip, Legend as ChartLegend } from 'chart.js';
 import './Dashboard.css';
 
@@ -136,17 +136,8 @@ const Dashboard: React.FC<DashboardProps> = ({
 
       {/* Charts Section */}
       <div className="charts-section">
-        <div className="chart-container">
-          <ResponsiveContainer width="100%" height={400}>
-            <LineChart data={priceChartData} options={chartOptions}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="time" />
-              <YAxis />
-              <Tooltip />
-              <Legend />
-              <Line type="monotone" dataKey="price" stroke="#8884d8" activeDot={{ r: 8 }} />
-            </LineChart>
-          </ResponsiveContainer>
+        <div className="chart-container" style={{ height: 400 }}>
+          <Line data={priceChartData} options={chartOptions} />
         </div>
       </div>
 

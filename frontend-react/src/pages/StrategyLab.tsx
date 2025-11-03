@@ -175,7 +175,7 @@ const StrategyLab: React.FC = () => {
                 <div className="strategy-params">
                   {Object.entries(strategy.parameters).map(([key, value]) => (
                     <span key={key} className="param-tag">
-                      {key}: {value}
+                      {`${key}: ${String(value)}`}
                     </span>
                   ))}
                 </div>
@@ -207,7 +207,7 @@ const StrategyLab: React.FC = () => {
                 {Object.entries(selectedStrategy.parameters).map(([key, value]) => (
                   <div key={key} className="param-item">
                     <span className="param-name">{key}:</span>
-                    <span className="param-value">{value}</span>
+                    <span className="param-value">{String(value)}</span>
                   </div>
                 ))}
               </div>

@@ -11,12 +11,13 @@ COPY src ./src
 # Build release version
 RUN cargo build --release
 
-# Final stage
-FROM debian:bullseye-slim
+# Final stage - use bookworm for newer GLIBC
+FROM debian:bookworm-slim
 
 # Install runtime dependencies
 RUN apt-get update && apt-get install -y \
     ca-certificates \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /root/

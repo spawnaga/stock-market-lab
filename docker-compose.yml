@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   # Database services
   postgres:
@@ -24,7 +22,7 @@ services:
   redis:
     image: redis:7-alpine
     ports:
-      - "6379:6379"
+      - "7379:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -37,7 +35,7 @@ services:
 
   # Message broker
   zookeeper:
-    image: confluentinc/cp-zookeeper:latest
+    image: confluentinc/cp-zookeeper:7.5.3
     environment:
       ZOOKEEPER_CLIENT_PORT: 2181
       ZOOKEEPER_TICK_TIME: 2000
@@ -50,10 +48,13 @@ services:
     restart: unless-stopped
 
   kafka:
-    image: confluentinc/cp-kafka:latest
+    image: confluentinc/cp-kafka:7.5.3
     environment:
       KAFKA_BROKER_ID: 1
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      # Bind listeners inside the container for internal (broker-to-broker) and host access
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:9092,PLAINTEXT_HOST://0.0.0.0:29092
+      # Advertise correct addresses to clients (containers use service name, host uses localhost)
       KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092,PLAINTEXT_HOST://localhost:29092
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
@@ -68,7 +69,8 @@ services:
       - "9092:9092"
       - "29092:29092"
     healthcheck:
-      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server=localhost:9092"]
+      # Use in-network DNS name to avoid potential localhost binding issues
+      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server=kafka:9092"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -93,18 +95,14 @@ services:
         condition: service_healthy
       kafka:
         condition: service_healthy
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 40s
     restart: unless-stopped
 
   python-agents:
     build:
       context: ./agents-python
       dockerfile: Dockerfile
+    ports:
+      - "5000:5000"
     environment:
       - DATABASE_URL=postgresql://stock_user:stock_password@postgres:5432/stock_market
       - REDIS_URL=redis://redis:6379
@@ -120,7 +118,7 @@ services:
       cpp-backend:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8000/health')"]
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:5000/health')"]
       interval: 30s
       timeout: 10s
       retries: 3
@@ -159,12 +157,12 @@ services:
     ports:
       - "3001:3000"
     environment:
-      - REACT_APP_API_URL=http://localhost:8080
-      - REACT_APP_WS_URL=ws://localhost:8080
+      - REACT_APP_API_URL=http://localhost:5000
+      - REACT_APP_WS_URL=ws://localhost:5000
+      - REACT_APP_CPP_API_URL=http://localhost:8080
       - GENERATE_SOURCEMAP=false
     depends_on:
-      cpp-backend:
-        condition: service_healthy
+      - cpp-backend
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/"]
       interval: 30s

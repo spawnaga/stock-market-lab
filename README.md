@@ -33,7 +33,7 @@ This system is designed for **real-money trading performance** with:
 ## Running the Application
 
 ### Prerequisites
-- Docker and Docker Compose installed
+- Docker Desktop installed (includes Docker Compose v2)
 - At least 4GB RAM available
 
 ### Quick Start
@@ -44,7 +44,13 @@ git clone https://github.com/spawnaga/stock-market-lab.git
 cd stock-market-lab
 ```
 
-2. Start all services (choose one)
+2. Configure environment
+- Copy .env.example to .env (optional, only if you need to override defaults):
+```bash
+cp .env.example .env   # Windows PowerShell: Copy-Item .env.example .env
+```
+
+3. Start all services (choose one)
 - Windows PowerShell:
 ```powershell
 ./start.ps1
@@ -60,7 +66,7 @@ chmod +x start.sh
 ```
 - Or with Docker Compose directly:
 ```bash
-docker-compose up --build
+docker compose up --build
 ```
 
 3. Access the dashboard
@@ -77,22 +83,21 @@ docker-compose up --build
 ### Development Mode
 To run in development mode with live reloading (foreground logs):
 ```bash
-docker-compose up
+docker compose up
 ```
 
 ### Stopping Services
 ```bash
-docker-compose down
+docker compose down
 ```
 
 ### Database Initialization
 The database will automatically initialize with the schema defined in `db/schema.sql`. 
 To reset the database:
 ```bash
-cd infra
-docker-compose down
+docker compose down -v
 docker volume prune
-docker-compose up -d
+docker compose up -d
 ```
 
 ## Architecture Overview
