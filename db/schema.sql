@@ -103,3 +103,49 @@ CREATE TABLE IF NOT EXISTS strategy_executions (
 -- Create indexes for strategy executions
 CREATE INDEX idx_strategy_executions_strategy_id ON strategy_executions(strategy_id);
 CREATE INDEX idx_strategy_executions_status ON strategy_executions(status);
+
+-- Create table for OHLCV minute data
+CREATE TABLE IF NOT EXISTS market_data_ohlcv (
+    id SERIAL PRIMARY KEY,
+    symbol VARCHAR(10) NOT NULL,
+    datetime TIMESTAMP NOT NULL,
+    open NUMERIC(12, 4) NOT NULL,
+    high NUMERIC(12, 4) NOT NULL,
+    low NUMERIC(12, 4) NOT NULL,
+    close NUMERIC(12, 4) NOT NULL,
+    volume BIGINT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(symbol, datetime)
+);
+
+-- Create indexes for OHLCV data
+CREATE INDEX idx_ohlcv_symbol_datetime ON market_data_ohlcv(symbol, datetime);
+CREATE INDEX idx_ohlcv_symbol ON market_data_ohlcv(symbol);
+CREATE INDEX idx_ohlcv_datetime ON market_data_ohlcv(datetime);
+
+-- Add parameters column to user_strategies if not exists
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                   WHERE table_name='user_strategies' AND column_name='parameters') THEN
+        ALTER TABLE user_strategies ADD COLUMN parameters JSONB DEFAULT '{}';
+    END IF;
+END $$;
+
+-- Add symbol column to user_strategies for backtest target
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                   WHERE table_name='user_strategies' AND column_name='symbol') THEN
+        ALTER TABLE user_strategies ADD COLUMN symbol VARCHAR(10) DEFAULT 'AAPL';
+    END IF;
+END $$;
+
+-- Add strategy_type column
+DO $$
+BEGIN
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                   WHERE table_name='user_strategies' AND column_name='strategy_type') THEN
+        ALTER TABLE user_strategies ADD COLUMN strategy_type VARCHAR(50) DEFAULT 'custom';
+    END IF;
+END $$;

@@ -11,6 +11,7 @@ import os
 import signal
 import sys
 from functools import wraps
+from contextlib import contextmanager
 from flask import Flask, jsonify, request
 from flask_socketio import SocketIO
 import redis
@@ -28,6 +29,8 @@ import torch
 import torch.nn as nn
 from sklearn.preprocessing import MinMaxScaler
 import pickle
+import psycopg2
+from psycopg2.extras import RealDictCursor, execute_values
 
 # Configure logging with rotation
 if not os.path.exists('logs'):
@@ -51,8 +54,57 @@ socketio = SocketIO(app, cors_allowed_origins="*", logger=True, engineio_logger=
 # Redis connection for real-time data
 redis_client = redis.Redis(host='redis', port=6379, db=0, decode_responses=True)
 
-# In-memory storage for strategies (would be replaced with DB in production)
-strategies = []
+# PostgreSQL connection
+DATABASE_URL = os.environ.get(
+    'DATABASE_URL',
+    'postgresql://stock_user:stock_password@postgres:5432/stock_market'
+)
+
+@contextmanager
+def get_db_connection():
+    """Context manager for database connections."""
+    conn = psycopg2.connect(DATABASE_URL)
+    try:
+        yield conn
+    finally:
+        conn.close()
+
+def init_database():
+    """Initialize database tables if they don't exist."""
+    try:
+        with get_db_connection() as conn:
+            with conn.cursor() as cur:
+                # Create OHLCV table if not exists
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS market_data_ohlcv (
+                        id SERIAL PRIMARY KEY,
+                        symbol VARCHAR(10) NOT NULL,
+                        datetime TIMESTAMP NOT NULL,
+                        open NUMERIC(12, 4) NOT NULL,
+                        high NUMERIC(12, 4) NOT NULL,
+                        low NUMERIC(12, 4) NOT NULL,
+                        close NUMERIC(12, 4) NOT NULL,
+                        volume BIGINT NOT NULL,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        UNIQUE(symbol, datetime)
+                    )
+                """)
+                # Create indexes
+                cur.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_ohlcv_symbol_datetime
+                    ON market_data_ohlcv(symbol, datetime)
+                """)
+                conn.commit()
+        logger.info("Database initialized successfully")
+    except Exception as e:
+        logger.error(f"Database initialization error: {e}")
+
+# Demo users for simple authentication
+DEMO_USERS = {
+    'admin': 'admin',
+    'demo': 'demo',
+    'user': 'user123'
+}
 
 # Rate limiting storage (in-memory for demo, would use Redis in production)
 rate_limit_store = {}
@@ -875,27 +927,29 @@ def login():
     """Login endpoint to get JWT token."""
     try:
         data = request.get_json()
-        
+
         if not data or 'username' not in data or 'password' not in data:
             return jsonify({'error': 'Username and password required'}), 400
-            
-        # In a real implementation, validate credentials against a database
-        # For this demo, we'll accept any valid credentials
+
         username = data['username']
         password = data['password']
-        
+
+        # Validate against demo users
+        if username not in DEMO_USERS or DEMO_USERS[username] != password:
+            return jsonify({'error': 'Invalid username or password'}), 401
+
         # Create JWT token
         token = jwt.encode({
             'user': username,
             'exp': datetime.utcnow() + timedelta(seconds=JWT_EXPIRATION_SECONDS)
         }, app.config['SECRET_KEY'], algorithm='HS256')
-        
+
         return jsonify({
             'token': token,
             'expires_in': JWT_EXPIRATION_SECONDS,
             'user': username
         }), 200
-        
+
     except Exception as e:
         logger.error(f"Login error: {e}")
         return jsonify({'error': 'Internal server error'}), 500
@@ -1211,9 +1265,27 @@ def compare_strategies(current_user):
 @token_required
 @rate_limit(max_requests=100, window=3600)
 def get_strategies(current_user):
-    """Get all saved strategies."""
+    """Get all saved strategies from PostgreSQL."""
     try:
-        return jsonify({"strategies": strategies})
+        with get_db_connection() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("""
+                    SELECT id, name, description, query, parameters, symbol,
+                           strategy_type, created_by, created_at, updated_at
+                    FROM user_strategies
+                    WHERE created_by = %s OR created_by = 'system'
+                    ORDER BY created_at DESC
+                """, (current_user,))
+                strategies_list = cur.fetchall()
+
+        # Convert datetime objects to ISO format strings
+        for s in strategies_list:
+            if s.get('created_at'):
+                s['created_at'] = s['created_at'].isoformat()
+            if s.get('updated_at'):
+                s['updated_at'] = s['updated_at'].isoformat()
+
+        return jsonify({"strategies": strategies_list})
     except Exception as e:
         logger.error(f"Error getting strategies: {e}")
         return jsonify({"error": "Failed to retrieve strategies"}), 500
@@ -1222,36 +1294,335 @@ def get_strategies(current_user):
 @token_required
 @rate_limit(max_requests=50, window=3600)
 def create_strategy(current_user):
-    """Create a new strategy."""
+    """Create a new strategy and persist to PostgreSQL."""
     try:
         data = request.get_json()
-        
-        if not data or 'name' not in data or 'description' not in data:
-            return jsonify({"error": "Name and description are required"}), 400
-        
+
+        if not data or 'name' not in data:
+            return jsonify({"error": "Name is required"}), 400
+
         # Validate input
-        if not isinstance(data['name'], str) or not isinstance(data['description'], str):
-            return jsonify({"error": "Name and description must be strings"}), 400
-            
-        strategy = {
-            "id": f"strat-{len(strategies) + 1}",
-            "name": data['name'],
-            "description": data['description'],
-            "parameters": data.get('parameters', {}),
-            "createdAt": time.time(),
-            "createdBy": current_user
-        }
-        
-        strategies.append(strategy)
-        
+        if not isinstance(data['name'], str):
+            return jsonify({"error": "Name must be a string"}), 400
+
+        with get_db_connection() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("""
+                    INSERT INTO user_strategies
+                    (name, description, query, parameters, symbol, strategy_type, created_by)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s)
+                    RETURNING id, name, description, query, parameters, symbol,
+                              strategy_type, created_by, created_at, updated_at
+                """, (
+                    data['name'],
+                    data.get('description', ''),
+                    data.get('query', ''),
+                    json.dumps(data.get('parameters', {})),
+                    data.get('symbol', 'AAPL'),
+                    data.get('strategy_type', 'custom'),
+                    current_user
+                ))
+                strategy = cur.fetchone()
+                conn.commit()
+
+        # Convert datetime objects to ISO format strings
+        if strategy.get('created_at'):
+            strategy['created_at'] = strategy['created_at'].isoformat()
+        if strategy.get('updated_at'):
+            strategy['updated_at'] = strategy['updated_at'].isoformat()
+
         # Notify frontend about new strategy
-        socketio.emit('strategy_created', strategy)
-        
-        return jsonify(strategy), 201
-        
+        socketio.emit('strategy_created', dict(strategy))
+
+        return jsonify(dict(strategy)), 201
+
     except Exception as e:
         logger.error(f"Error creating strategy: {e}")
         return jsonify({"error": "Failed to create strategy"}), 500
+
+@app.route('/strategies/<int:strategy_id>', methods=['GET'])
+@token_required
+@rate_limit(max_requests=100, window=3600)
+def get_strategy(current_user, strategy_id):
+    """Get a specific strategy by ID."""
+    try:
+        with get_db_connection() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("""
+                    SELECT id, name, description, query, parameters, symbol,
+                           strategy_type, created_by, created_at, updated_at
+                    FROM user_strategies
+                    WHERE id = %s AND (created_by = %s OR created_by = 'system')
+                """, (strategy_id, current_user))
+                strategy = cur.fetchone()
+
+        if not strategy:
+            return jsonify({"error": "Strategy not found"}), 404
+
+        if strategy.get('created_at'):
+            strategy['created_at'] = strategy['created_at'].isoformat()
+        if strategy.get('updated_at'):
+            strategy['updated_at'] = strategy['updated_at'].isoformat()
+
+        return jsonify(dict(strategy))
+    except Exception as e:
+        logger.error(f"Error getting strategy: {e}")
+        return jsonify({"error": "Failed to retrieve strategy"}), 500
+
+@app.route('/strategies/<int:strategy_id>', methods=['PUT'])
+@token_required
+@rate_limit(max_requests=50, window=3600)
+def update_strategy(current_user, strategy_id):
+    """Update an existing strategy."""
+    try:
+        data = request.get_json()
+
+        with get_db_connection() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("""
+                    UPDATE user_strategies
+                    SET name = COALESCE(%s, name),
+                        description = COALESCE(%s, description),
+                        query = COALESCE(%s, query),
+                        parameters = COALESCE(%s, parameters),
+                        symbol = COALESCE(%s, symbol),
+                        strategy_type = COALESCE(%s, strategy_type),
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE id = %s AND created_by = %s
+                    RETURNING id, name, description, query, parameters, symbol,
+                              strategy_type, created_by, created_at, updated_at
+                """, (
+                    data.get('name'),
+                    data.get('description'),
+                    data.get('query'),
+                    json.dumps(data['parameters']) if 'parameters' in data else None,
+                    data.get('symbol'),
+                    data.get('strategy_type'),
+                    strategy_id,
+                    current_user
+                ))
+                strategy = cur.fetchone()
+                conn.commit()
+
+        if not strategy:
+            return jsonify({"error": "Strategy not found or not authorized"}), 404
+
+        if strategy.get('created_at'):
+            strategy['created_at'] = strategy['created_at'].isoformat()
+        if strategy.get('updated_at'):
+            strategy['updated_at'] = strategy['updated_at'].isoformat()
+
+        return jsonify(dict(strategy))
+    except Exception as e:
+        logger.error(f"Error updating strategy: {e}")
+        return jsonify({"error": "Failed to update strategy"}), 500
+
+@app.route('/strategies/<int:strategy_id>', methods=['DELETE'])
+@token_required
+@rate_limit(max_requests=50, window=3600)
+def delete_strategy(current_user, strategy_id):
+    """Delete a strategy."""
+    try:
+        with get_db_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    DELETE FROM user_strategies
+                    WHERE id = %s AND created_by = %s
+                    RETURNING id
+                """, (strategy_id, current_user))
+                deleted = cur.fetchone()
+                conn.commit()
+
+        if not deleted:
+            return jsonify({"error": "Strategy not found or not authorized"}), 404
+
+        return jsonify({"message": "Strategy deleted successfully", "id": strategy_id})
+    except Exception as e:
+        logger.error(f"Error deleting strategy: {e}")
+        return jsonify({"error": "Failed to delete strategy"}), 500
+
+# ============== Market Data Endpoints ==============
+
+@app.route('/market-data/symbols', methods=['GET'])
+@token_required
+@rate_limit(max_requests=100, window=3600)
+def get_available_symbols(current_user):
+    """Get list of symbols available in the database."""
+    try:
+        with get_db_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute("""
+                    SELECT symbol, COUNT(*) as data_points,
+                           MIN(datetime) as start_date,
+                           MAX(datetime) as end_date
+                    FROM market_data_ohlcv
+                    GROUP BY symbol
+                    ORDER BY symbol
+                """)
+                symbols = cur.fetchall()
+
+        result = [
+            {
+                'symbol': row[0],
+                'data_points': row[1],
+                'start_date': row[2].isoformat() if row[2] else None,
+                'end_date': row[3].isoformat() if row[3] else None
+            }
+            for row in symbols
+        ]
+
+        return jsonify({"symbols": result, "count": len(result)})
+    except Exception as e:
+        logger.error(f"Error getting symbols: {e}")
+        return jsonify({"error": "Failed to retrieve symbols"}), 500
+
+@app.route('/market-data/<symbol>', methods=['GET'])
+@token_required
+@rate_limit(max_requests=50, window=3600)
+def get_market_data(current_user, symbol):
+    """Get OHLCV market data for a symbol."""
+    try:
+        start_date = request.args.get('start_date')
+        end_date = request.args.get('end_date')
+        limit = request.args.get('limit', 1000, type=int)
+
+        if limit > 10000:
+            limit = 10000
+
+        with get_db_connection() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                if start_date and end_date:
+                    cur.execute("""
+                        SELECT datetime, open, high, low, close, volume
+                        FROM market_data_ohlcv
+                        WHERE symbol = %s AND datetime BETWEEN %s AND %s
+                        ORDER BY datetime
+                        LIMIT %s
+                    """, (symbol.upper(), start_date, end_date, limit))
+                else:
+                    cur.execute("""
+                        SELECT datetime, open, high, low, close, volume
+                        FROM market_data_ohlcv
+                        WHERE symbol = %s
+                        ORDER BY datetime DESC
+                        LIMIT %s
+                    """, (symbol.upper(), limit))
+
+                data = cur.fetchall()
+
+        # Convert to list of dicts with serializable values
+        result = []
+        for row in data:
+            result.append({
+                'datetime': row['datetime'].isoformat() if row['datetime'] else None,
+                'open': float(row['open']),
+                'high': float(row['high']),
+                'low': float(row['low']),
+                'close': float(row['close']),
+                'volume': int(row['volume'])
+            })
+
+        return jsonify({
+            "symbol": symbol.upper(),
+            "data": result,
+            "count": len(result)
+        })
+    except Exception as e:
+        logger.error(f"Error getting market data: {e}")
+        return jsonify({"error": "Failed to retrieve market data"}), 500
+
+@app.route('/market-data/<symbol>/latest', methods=['GET'])
+@token_required
+@rate_limit(max_requests=100, window=3600)
+def get_latest_market_data(current_user, symbol):
+    """Get latest market data for a symbol."""
+    try:
+        with get_db_connection() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute("""
+                    SELECT datetime, open, high, low, close, volume
+                    FROM market_data_ohlcv
+                    WHERE symbol = %s
+                    ORDER BY datetime DESC
+                    LIMIT 1
+                """, (symbol.upper(),))
+                row = cur.fetchone()
+
+        if not row:
+            return jsonify({"error": "No data found for symbol"}), 404
+
+        return jsonify({
+            "symbol": symbol.upper(),
+            "datetime": row['datetime'].isoformat() if row['datetime'] else None,
+            "open": float(row['open']),
+            "high": float(row['high']),
+            "low": float(row['low']),
+            "close": float(row['close']),
+            "volume": int(row['volume'])
+        })
+    except Exception as e:
+        logger.error(f"Error getting latest market data: {e}")
+        return jsonify({"error": "Failed to retrieve market data"}), 500
+
+@app.route('/market-data/<symbol>/daily', methods=['GET'])
+@token_required
+@rate_limit(max_requests=50, window=3600)
+def get_daily_market_data(current_user, symbol):
+    """Get aggregated daily OHLCV data for a symbol."""
+    try:
+        start_date = request.args.get('start_date')
+        end_date = request.args.get('end_date')
+        limit = request.args.get('limit', 365, type=int)
+
+        with get_db_connection() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                query = """
+                    SELECT DATE(datetime) as date,
+                           (array_agg(open ORDER BY datetime))[1] as open,
+                           MAX(high) as high,
+                           MIN(low) as low,
+                           (array_agg(close ORDER BY datetime DESC))[1] as close,
+                           SUM(volume) as volume
+                    FROM market_data_ohlcv
+                    WHERE symbol = %s
+                """
+                params = [symbol.upper()]
+
+                if start_date and end_date:
+                    query += " AND datetime BETWEEN %s AND %s"
+                    params.extend([start_date, end_date])
+
+                query += """
+                    GROUP BY DATE(datetime)
+                    ORDER BY date DESC
+                    LIMIT %s
+                """
+                params.append(limit)
+
+                cur.execute(query, params)
+                data = cur.fetchall()
+
+        result = []
+        for row in data:
+            result.append({
+                'date': row['date'].isoformat() if row['date'] else None,
+                'open': float(row['open']) if row['open'] else 0,
+                'high': float(row['high']) if row['high'] else 0,
+                'low': float(row['low']) if row['low'] else 0,
+                'close': float(row['close']) if row['close'] else 0,
+                'volume': int(row['volume']) if row['volume'] else 0
+            })
+
+        return jsonify({
+            "symbol": symbol.upper(),
+            "data": result,
+            "count": len(result)
+        })
+    except Exception as e:
+        logger.error(f"Error getting daily market data: {e}")
+        return jsonify({"error": "Failed to retrieve market data"}), 500
+
+# ============== Agent Override Endpoints ==============
 
 @app.route('/override/<agent_id>', methods=['POST'])
 @token_required
@@ -1481,11 +1852,14 @@ def handle_disconnect():
     logger.info('Client disconnected')
 
 if __name__ == '__main__':
+    # Initialize database tables
+    init_database()
+
     # Start market data streaming
     start_market_data_streaming()
-    
+
     # Start agents
     start_agents()
-    
+
     # Run the Flask-SocketIO server
     socketio.run(app, host='0.0.0.0', port=5000, debug=False, allow_unsafe_werkzeug=True)

@@ -11,6 +11,7 @@ RUN apt-get update && apt-get install -y \
     libpq-dev \
     libpqxx-dev \
     libjsoncpp-dev \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 

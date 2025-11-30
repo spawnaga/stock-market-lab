@@ -131,3 +131,220 @@
   flex-grow: 1;
   color: #34495e;
 }
+
+/* Connection Status */
+.connection-status {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 10px;
+  font-size: 0.9em;
+}
+
+.status-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+
+.status-dot.connected {
+  background-color: #27ae60;
+  box-shadow: 0 0 8px rgba(39, 174, 96, 0.5);
+}
+
+.status-dot.disconnected {
+  background-color: #e74c3c;
+}
+
+/* Error Banner */
+.error-banner {
+  background-color: #f8d7da;
+  border: 1px solid #f5c6cb;
+  color: #721c24;
+  padding: 12px 20px;
+  border-radius: 8px;
+  margin-bottom: 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.error-banner button {
+  background: transparent;
+  border: 1px solid #721c24;
+  color: #721c24;
+  padding: 4px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.error-banner button:hover {
+  background: #721c24;
+  color: white;
+}
+
+/* System Metrics */
+.system-metrics {
+  background: #f8f9fa;
+  padding: 20px;
+  border-radius: 8px;
+  margin-bottom: 20px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.system-metrics h3 {
+  margin-top: 0;
+  margin-bottom: 15px;
+  color: #2c3e50;
+}
+
+.metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 15px;
+}
+
+.metric-card {
+  background: white;
+  padding: 15px;
+  border-radius: 6px;
+  text-align: center;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+}
+
+.metric-label {
+  display: block;
+  font-size: 0.8em;
+  color: #7f8c8d;
+  margin-bottom: 5px;
+}
+
+.metric-value {
+  display: block;
+  font-size: 1.4em;
+  font-weight: 600;
+  color: #2c3e50;
+}
+
+/* Agent Status Cards with status colors */
+.agent-status-card.online {
+  border-left: 4px solid #27ae60;
+}
+
+.agent-status-card.offline {
+  border-left: 4px solid #e74c3c;
+}
+
+.agent-status-card.error {
+  border-left: 4px solid #f39c12;
+}
+
+.status-indicator.error {
+  background-color: #f39c12;
+}
+
+.agent-status-card .error {
+  color: #f39c12;
+  font-weight: 600;
+}
+
+/* Loading States */
+.loading {
+  text-align: center;
+  padding: 40px;
+  color: #7f8c8d;
+}
+
+.loading-indicator {
+  text-align: center;
+  padding: 20px;
+  color: #7f8c8d;
+  grid-column: 1 / -1;
+}
+
+/* No Events State */
+.no-events {
+  text-align: center;
+  padding: 30px;
+  color: #7f8c8d;
+}
+
+.no-events p {
+  margin: 5px 0;
+}
+
+.no-events .hint {
+  font-size: 0.9em;
+  color: #95a5a6;
+}
+
+/* Event Count Badge */
+.event-count {
+  font-size: 0.8em;
+  background: #3498db;
+  color: white;
+  padding: 2px 8px;
+  border-radius: 10px;
+  margin-left: 8px;
+}
+
+/* Event Types */
+.event-type.sentiment {
+  background-color: #9b59b6;
+  color: white;
+}
+
+/* Streaming Status */
+.streaming-status {
+  background: #f8f9fa;
+  padding: 20px;
+  border-radius: 8px;
+  margin-top: 20px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.streaming-status h3 {
+  margin-top: 0;
+  margin-bottom: 15px;
+  color: #2c3e50;
+}
+
+.streaming-indicator {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px;
+  background: white;
+  border-radius: 6px;
+}
+
+.streaming-indicator.active {
+  color: #27ae60;
+}
+
+.streaming-indicator.inactive {
+  color: #95a5a6;
+}
+
+.streaming-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.streaming-indicator.active .streaming-dot {
+  animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.6;
+    transform: scale(1.1);
+  }
+}

@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import Header from './components/Header';
+import StrategyLab from './pages/StrategyLab';
+import AgentMonitor from './pages/AgentMonitor';
 import './App.css';
 
 interface MarketData {
@@ -107,29 +109,6 @@ const Dashboard: React.FC<{
     </main>
   );
 };
-
-// Placeholder components for other routes
-const StrategyLab: React.FC = () => (
-  <main className="App-main">
-    <section>
-      <h2>🧪 Strategy Lab</h2>
-      <div className="no-data">
-        <p>Strategy development tools coming soon...</p>
-      </div>
-    </section>
-  </main>
-);
-
-const AgentMonitor: React.FC = () => (
-  <main className="App-main">
-    <section>
-      <h2>🤖 Agent Monitor</h2>
-      <div className="no-data">
-        <p>AI agent monitoring dashboard coming soon...</p>
-      </div>
-    </section>
-  </main>
-);
 
 function App() {
   const [marketData, setMarketData] = useState<MarketData[]>([]);

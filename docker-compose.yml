@@ -9,6 +9,7 @@ services:
       POSTGRES_INITDB_ARGS: "--encoding=UTF-8"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      - ./db/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
     ports:
       - "5432:5432"
     healthcheck:
@@ -95,6 +96,12 @@ services:
         condition: service_healthy
       kafka:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     restart: unless-stopped
 
   python-agents:
@@ -102,12 +109,14 @@ services:
       context: ./agents-python
       dockerfile: Dockerfile
     ports:
-      - "5000:5000"
+      - "5100:5000"
     environment:
       - DATABASE_URL=postgresql://stock_user:stock_password@postgres:5432/stock_market
       - REDIS_URL=redis://redis:6379
       - KAFKA_BROKERS=kafka:9092
       - CPP_BACKEND_URL=http://cpp-backend:8080
+    volumes:
+      - "F:/Market Data/Extracted:/data/market:ro"
     depends_on:
       postgres:
         condition: service_healthy
@@ -157,8 +166,8 @@ services:
     ports:
       - "3001:3000"
     environment:
-      - REACT_APP_API_URL=http://localhost:5000
-      - REACT_APP_WS_URL=ws://localhost:5000
+      - REACT_APP_API_URL=http://localhost:5100
+      - REACT_APP_WS_URL=ws://localhost:5100
       - REACT_APP_CPP_API_URL=http://localhost:8080
       - GENERATE_SOURCEMAP=false
     depends_on:
