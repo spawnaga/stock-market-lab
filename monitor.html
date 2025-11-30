@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>NQ Trading Monitor</title>
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <style>
+        body { font-family: Arial; padding: 20px; background: #1a1a1a; color: #fff; }
+        .card { background: #2a2a2a; padding: 20px; margin: 10px 0; border-radius: 8px; }
+        .metric { font-size: 24px; font-weight: bold; color: #4CAF50; }
+        .label { color: #888; font-size: 14px; }
+        #status { color: #4CAF50; }
+        .prediction { background: #1e3a5f; padding: 15px; margin: 5px 0; border-left: 4px solid #2196F3; }
+    </style>
+</head>
+<body>
+    <h1>🚀 NQ Futures Trading Monitor</h1>
+    <div class="card">
+        <div class="label">Connection Status</div>
+        <div id="status" class="metric">Connecting...</div>
+    </div>
+    
+    <div class="card">
+        <h2>LSTM Price Predictions</h2>
+        <div id="predictions"></div>
+    </div>
+    
+    <div class="card">
+        <h2>Agent Decisions</h2>
+        <div id="decisions"></div>
+    </div>
+    
+    <div class="card">
+        <h2>System Metrics</h2>
+        <div id="metrics"></div>
+    </div>
+
+    <script>
+        const socket = io('http://localhost:5000');
+        
+        socket.on('connect', () => {
+            document.getElementById('status').textContent = 'Connected ✓';
+            document.getElementById('status').style.color = '#4CAF50';
+            console.log('Connected to agents');
+        });
+        
+        socket.on('disconnect', () => {
+            document.getElementById('status').textContent = 'Disconnected ✗';
+            document.getElementById('status').style.color = '#f44336';
+        });
+        
+        socket.on('price_prediction', (data) => {
+            console.log('Prediction:', data);
+            const pred = data.prediction;
+            const html = `
+                <div class="prediction">
+                    <strong>${new Date(data.timestamp * 1000).toLocaleTimeString()}</strong><br>
+                    Price: $${pred.predicted_price} | 
+                    Direction: ${pred.direction} | 
+                    Confidence: ${(pred.confidence * 100).toFixed(1)}%<br>
+                    <small>${pred.reason}</small>
+                </div>
+            `;
+            document.getElementById('predictions').innerHTML = html + document.getElementById('predictions').innerHTML;
+        });
+        
+        socket.on('agent_decision', (data) => {
+            console.log('Decision:', data);
+            const dec = data.decision;
+            const html = `
+                <div class="prediction">
+                    <strong>${data.agent_type} - ${new Date(data.timestamp * 1000).toLocaleTimeString()}</strong><br>
+                    Action: ${dec.action} | Confidence: ${(dec.confidence * 100).toFixed(1)}%<br>
+                    <small>${dec.reason}</small>
+                </div>
+            `;
+            document.getElementById('decisions').innerHTML = html + document.getElementById('decisions').innerHTML;
+        });
+        
+        // Fetch metrics every 5 seconds
+        setInterval(async () => {
+            try {
+                const response = await fetch('http://localhost:5000/health');
+                const data = await response.json();
+                document.getElementById('metrics').innerHTML = `
+                    <div>Memory: ${data.system.memory_mb.toFixed(2)} MB</div>
+                    <div>CPU: ${data.system.cpu_percent.toFixed(1)}%</div>
+                    <div>Uptime: ${(data.system.uptime_seconds / 60).toFixed(1)} minutes</div>
+                    <div>Agents: RL=${data.agents.rl}, LSTM=${data.agents.lstm}, News=${data.agents.news}</div>
+                `;
+            } catch (e) {
+                console.error('Failed to fetch metrics:', e);
+            }
+        }, 5000);
+    </script>
+</body>
+</html>

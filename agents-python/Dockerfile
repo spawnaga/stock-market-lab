@@ -25,6 +25,7 @@ RUN pip install --no-cache-dir \
     redis==5.0.1 \
     flask==2.3.2 \
     flask-socketio==5.3.6 \
+    flask-cors==4.0.0 \
     psutil==5.9.5 \
     scikit-learn==1.3.0 \
     PyJWT==2.8.0

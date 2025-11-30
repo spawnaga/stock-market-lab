@@ -14,6 +14,7 @@ from functools import wraps
 from contextlib import contextmanager
 from flask import Flask, jsonify, request
 from flask_socketio import SocketIO
+from flask_cors import CORS
 import redis
 import logging
 from logging.handlers import RotatingFileHandler
@@ -49,6 +50,10 @@ logger.setLevel(logging.INFO)
 # Initialize Flask app and SocketIO
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'stock-market-secret-key')
+
+# Enable CORS for all routes
+CORS(app, resources={r"/*": {"origins": "*"}})
+
 socketio = SocketIO(app, cors_allowed_origins="*", logger=True, engineio_logger=True)
 
 # Redis connection for real-time data
