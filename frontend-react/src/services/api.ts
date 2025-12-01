@@ -367,6 +367,161 @@ export const apiService = {
     }
     return response.json();
   },
+
+  // GA+RL Operations
+  async getGARLStatus(): Promise<GARLStatus> {
+    const response = await authFetch(`${API_URL}/ga-rl/status`);
+    if (!response.ok) {
+      throw new Error('Failed to fetch GA+RL status');
+    }
+    return response.json();
+  },
+
+  async initializeGARL(params: GARLInitParams): Promise<any> {
+    const response = await authFetch(`${API_URL}/ga-rl/initialize`, {
+      method: 'POST',
+      body: JSON.stringify(params),
+    });
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to initialize GA+RL');
+    }
+    return response.json();
+  },
+
+  async startGARLTraining(params: GARLTrainParams): Promise<any> {
+    const response = await authFetch(`${API_URL}/ga-rl/train`, {
+      method: 'POST',
+      body: JSON.stringify(params),
+    });
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to start GA+RL training');
+    }
+    return response.json();
+  },
+
+  async stopGARLTraining(): Promise<any> {
+    const response = await authFetch(`${API_URL}/ga-rl/stop`, {
+      method: 'POST',
+    });
+    if (!response.ok) {
+      throw new Error('Failed to stop GA+RL training');
+    }
+    return response.json();
+  },
+
+  async getGARLSignal(marketState: GARLMarketState): Promise<GARLSignal> {
+    const response = await authFetch(`${API_URL}/ga-rl/signal`, {
+      method: 'POST',
+      body: JSON.stringify(marketState),
+    });
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to get GA+RL signal');
+    }
+    return response.json();
+  },
+
+  async getGARLHistory(): Promise<GARLHistory> {
+    const response = await authFetch(`${API_URL}/ga-rl/history`);
+    if (!response.ok) {
+      throw new Error('Failed to fetch GA+RL history');
+    }
+    return response.json();
+  },
 };
+
+// GA+RL Types
+export interface GARLStatus {
+  available: boolean;
+  initialized: boolean;
+  symbol?: string;
+  is_training?: boolean;
+  is_live_trading?: boolean;
+  has_trained_agent?: boolean;
+  training_progress?: {
+    generation: number;
+    total_generations: number;
+    chromosome: number;
+    total_chromosomes: number;
+    current_fitness: number;
+    best_fitness: number;
+    elapsed_time: number;
+  };
+  current_chromosome?: GARLChromosome;
+}
+
+export interface GARLInitParams {
+  symbol?: string;
+  population_size?: number;
+  num_generations?: number;
+}
+
+export interface GARLTrainParams {
+  symbol?: string;
+  start_date?: string;
+  end_date?: string;
+}
+
+export interface GARLMarketState {
+  price_change_1d?: number;
+  price_change_5d?: number;
+  price_change_20d?: number;
+  volume_ratio?: number;
+  rsi?: number;
+  macd?: number;
+  macd_signal?: number;
+  bb_position?: number;
+  position?: number;
+  portfolio_value_change?: number;
+  time_in_position?: number;
+}
+
+export interface GARLSignal {
+  signal: {
+    action: 'buy' | 'sell' | 'hold';
+    confidence: number;
+    q_values: Record<string, number>;
+    chromosome_id?: string;
+  };
+  market_state: GARLMarketState;
+  timestamp: number;
+}
+
+export interface GARLChromosome {
+  hidden_size: number;
+  num_layers: number;
+  use_dueling: boolean;
+  learning_rate: number;
+  gamma: number;
+  epsilon_decay: number;
+  batch_size: number;
+  buffer_size: number;
+  position_size: number;
+  stop_loss: number;
+  take_profit: number;
+  fitness: number;
+  sharpe_ratio: number;
+  total_return: number;
+  max_drawdown: number;
+  win_rate: number;
+  generation: number;
+  chromosome_id: string;
+}
+
+export interface GARLHistory {
+  history: Array<{
+    generation: number;
+    best_fitness: number;
+    avg_fitness: number;
+    worst_fitness: number;
+    best_chromosome_id: string;
+    best_sharpe: number;
+    best_return: number;
+  }>;
+  generations_completed: number;
+  best_chromosome: GARLChromosome | null;
+}
 
 export default apiService;

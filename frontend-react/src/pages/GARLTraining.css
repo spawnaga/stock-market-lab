@@ -1,0 +1,470 @@
+.garl-training {
+  padding: 2rem;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.garl-training h1 {
+  color: #1a1a2e;
+  margin-bottom: 0.5rem;
+}
+
+.garl-training .description {
+  color: #666;
+  margin-bottom: 2rem;
+  font-size: 1.1rem;
+}
+
+/* Loading */
+.loading-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 400px;
+}
+
+.spinner {
+  width: 50px;
+  height: 50px;
+  border: 4px solid #f3f3f3;
+  border-top: 4px solid #4a90d9;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* Messages */
+.error-message {
+  background: #fee2e2;
+  border: 1px solid #ef4444;
+  color: #b91c1c;
+  padding: 1rem;
+  border-radius: 8px;
+  margin-bottom: 1rem;
+}
+
+.success-message {
+  background: #dcfce7;
+  border: 1px solid #22c55e;
+  color: #15803d;
+  padding: 1rem;
+  border-radius: 8px;
+  margin-bottom: 1rem;
+}
+
+/* Sections */
+section {
+  background: white;
+  border-radius: 12px;
+  padding: 1.5rem;
+  margin-bottom: 1.5rem;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+section h2 {
+  color: #1a1a2e;
+  margin-bottom: 1rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 2px solid #4a90d9;
+}
+
+section h3 {
+  color: #374151;
+  margin-bottom: 0.75rem;
+}
+
+/* Status Section */
+.status-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1rem;
+}
+
+.status-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.75rem;
+  background: #f8fafc;
+  border-radius: 8px;
+}
+
+.status-item label {
+  color: #64748b;
+  font-weight: 500;
+}
+
+.status-ok {
+  color: #22c55e;
+  font-weight: 600;
+}
+
+.status-error {
+  color: #ef4444;
+  font-weight: 600;
+}
+
+.status-warning {
+  color: #f59e0b;
+  font-weight: 600;
+}
+
+.status-active {
+  color: #4a90d9;
+  font-weight: 600;
+  animation: pulse 2s infinite;
+}
+
+.status-idle {
+  color: #94a3b8;
+  font-weight: 600;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+/* Configuration Form */
+.config-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.form-group label {
+  color: #374151;
+  font-weight: 500;
+}
+
+.form-group input {
+  padding: 0.75rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  font-size: 1rem;
+}
+
+.form-group input:focus {
+  outline: none;
+  border-color: #4a90d9;
+  box-shadow: 0 0 0 3px rgba(74, 144, 217, 0.1);
+}
+
+.form-group input:disabled {
+  background: #f1f5f9;
+  cursor: not-allowed;
+}
+
+/* Buttons */
+.action-buttons {
+  display: flex;
+  gap: 1rem;
+}
+
+.btn-primary,
+.btn-secondary,
+.btn-danger {
+  padding: 0.75rem 1.5rem;
+  border: none;
+  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-primary {
+  background: #4a90d9;
+  color: white;
+}
+
+.btn-primary:hover {
+  background: #3b7cc4;
+}
+
+.btn-secondary {
+  background: #e2e8f0;
+  color: #374151;
+}
+
+.btn-secondary:hover {
+  background: #cbd5e1;
+}
+
+.btn-danger {
+  background: #ef4444;
+  color: white;
+}
+
+.btn-danger:hover {
+  background: #dc2626;
+}
+
+/* Progress Section */
+.progress-info {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.progress-item {
+  display: flex;
+  justify-content: space-between;
+  padding: 0.5rem;
+  background: #f8fafc;
+  border-radius: 6px;
+}
+
+.progress-item label {
+  color: #64748b;
+}
+
+.progress-item span {
+  font-weight: 600;
+  color: #1a1a2e;
+}
+
+.progress-item .highlight {
+  color: #4a90d9;
+}
+
+.progress-bar-container {
+  width: 100%;
+  height: 12px;
+  background: #e2e8f0;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.progress-bar {
+  height: 100%;
+  background: linear-gradient(90deg, #4a90d9, #22c55e);
+  transition: width 0.3s ease;
+}
+
+/* History Chart */
+.history-chart {
+  margin: 1rem 0;
+}
+
+.chart-container {
+  display: flex;
+  align-items: flex-end;
+  gap: 4px;
+  height: 200px;
+  padding: 1rem;
+  background: #f8fafc;
+  border-radius: 8px;
+}
+
+.chart-bar {
+  flex: 1;
+  min-width: 20px;
+  max-width: 40px;
+  background: linear-gradient(180deg, #4a90d9, #22c55e);
+  border-radius: 4px 4px 0 0;
+  position: relative;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+
+.chart-bar:hover {
+  opacity: 0.8;
+}
+
+.chart-bar .bar-label {
+  position: absolute;
+  bottom: -20px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 0.7rem;
+  color: #64748b;
+}
+
+.chart-legend {
+  text-align: center;
+  margin-top: 1.5rem;
+  color: #64748b;
+  font-size: 0.875rem;
+}
+
+.history-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.history-stats .stat {
+  display: flex;
+  justify-content: space-between;
+  padding: 0.75rem;
+  background: #f8fafc;
+  border-radius: 6px;
+}
+
+.history-stats .stat label {
+  color: #64748b;
+}
+
+.history-stats .stat span {
+  font-weight: 600;
+  color: #1a1a2e;
+}
+
+/* Chromosome Section */
+.chromosome-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 1.5rem;
+}
+
+.chromosome-group {
+  background: #f8fafc;
+  padding: 1rem;
+  border-radius: 8px;
+}
+
+.chromosome-group h3 {
+  font-size: 1rem;
+  color: #4a90d9;
+  margin-bottom: 0.75rem;
+}
+
+.chromosome-group .param {
+  display: flex;
+  justify-content: space-between;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.chromosome-group .param:last-child {
+  border-bottom: none;
+}
+
+.chromosome-group .param label {
+  color: #64748b;
+}
+
+.chromosome-group .param span {
+  font-weight: 600;
+  color: #1a1a2e;
+}
+
+.chromosome-group .param .highlight {
+  color: #22c55e;
+}
+
+/* Signal Section */
+.signal-section p {
+  color: #64748b;
+  margin-bottom: 1rem;
+}
+
+.signal-result {
+  margin-top: 1rem;
+  padding: 1rem;
+  background: #f8fafc;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  gap: 2rem;
+}
+
+.signal-action {
+  font-size: 1.5rem;
+  font-weight: 700;
+  padding: 1rem 2rem;
+  border-radius: 8px;
+  text-transform: uppercase;
+}
+
+.signal-buy {
+  background: #dcfce7;
+  color: #15803d;
+}
+
+.signal-sell {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+.signal-hold {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.signal-details {
+  flex: 1;
+}
+
+.signal-details .detail {
+  display: flex;
+  justify-content: space-between;
+  padding: 0.5rem 0;
+}
+
+.signal-details .detail label {
+  color: #64748b;
+}
+
+.signal-details .detail span {
+  font-weight: 500;
+}
+
+/* Info Section */
+.info-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 1.5rem;
+}
+
+.info-card {
+  background: #f8fafc;
+  padding: 1.25rem;
+  border-radius: 8px;
+  border-left: 4px solid #4a90d9;
+}
+
+.info-card h3 {
+  color: #4a90d9;
+  margin-bottom: 0.75rem;
+}
+
+.info-card p {
+  color: #64748b;
+  line-height: 1.6;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .garl-training {
+    padding: 1rem;
+  }
+
+  .config-form {
+    grid-template-columns: 1fr;
+  }
+
+  .chromosome-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .signal-result {
+    flex-direction: column;
+    text-align: center;
+  }
+}

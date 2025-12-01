@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import Header from './components/Header';
 import StrategyLab from './pages/StrategyLab';
 import AgentMonitor from './pages/AgentMonitor';
+import GARLTraining from './pages/GARLTraining';
 import './App.css';
 
 interface MarketData {
@@ -191,6 +192,7 @@ function App() {
           />
           <Route path="/strategy-lab" element={<StrategyLab />} />
           <Route path="/agent-monitor" element={<AgentMonitor />} />
+          <Route path="/ga-rl-training" element={<GARLTraining />} />
         </Routes>
 
         <footer className="App-footer">

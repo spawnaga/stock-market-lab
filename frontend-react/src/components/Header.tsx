@@ -18,6 +18,9 @@ const Header: React.FC = () => {
             <li className="nav-item">
               <Link to="/agent-monitor" className="nav-link">Agent Monitor</Link>
             </li>
+            <li className="nav-item">
+              <Link to="/ga-rl-training" className="nav-link">GA+RL Training</Link>
+            </li>
           </ul>
         </nav>
       </div>

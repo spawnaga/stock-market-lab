@@ -155,6 +155,19 @@ from market_data import MarketDataHandler
 # Import backtesting framework
 from backtesting_framework import BacktestingEngine, create_default_strategies, BacktestResult
 
+# Import GA+RL integration module
+try:
+    from ga_rl_integration import IntegratedTradingSystem, GADQNTrainingManager
+    GA_RL_AVAILABLE = True
+    logger.info("GA+RL integration module loaded successfully")
+except ImportError as e:
+    GA_RL_AVAILABLE = False
+    logger.warning(f"GA+RL integration module not available: {e}")
+
+# Global GA+RL trading system instance
+ga_rl_system = None
+ga_rl_training_thread = None
+
 def token_required(f):
     """Decorator to require valid JWT token for protected routes."""
     @wraps(f)
@@ -1845,6 +1858,290 @@ def get_lstm_status(current_user):
     except Exception as e:
         logger.error(f"Error getting LSTM status: {e}")
         return jsonify({"error": "Failed to retrieve LSTM status"}), 500
+
+# ============== GA+RL Training Endpoints ==============
+
+@app.route('/ga-rl/status', methods=['GET'])
+@token_required
+@track_metrics
+@rate_limit(max_requests=100, window=3600)
+def get_ga_rl_status(current_user):
+    """Get GA+RL system status and training progress."""
+    try:
+        if not GA_RL_AVAILABLE:
+            return jsonify({
+                "available": False,
+                "error": "GA+RL module not available"
+            }), 200
+
+        global ga_rl_system
+
+        if ga_rl_system is None:
+            return jsonify({
+                "available": True,
+                "initialized": False,
+                "status": "not_initialized",
+                "message": "GA+RL system not initialized. Call /ga-rl/initialize first."
+            }), 200
+
+        status = ga_rl_system.get_status()
+        return jsonify({
+            "available": True,
+            "initialized": True,
+            **status
+        }), 200
+
+    except Exception as e:
+        logger.error(f"Error getting GA+RL status: {e}")
+        return jsonify({"error": f"Failed to get GA+RL status: {str(e)}"}), 500
+
+
+@app.route('/ga-rl/initialize', methods=['POST'])
+@token_required
+@track_metrics
+@rate_limit(max_requests=10, window=3600)
+def initialize_ga_rl(current_user):
+    """Initialize the GA+RL trading system."""
+    try:
+        if not GA_RL_AVAILABLE:
+            return jsonify({"error": "GA+RL module not available"}), 400
+
+        global ga_rl_system
+
+        data = request.get_json() or {}
+        symbol = data.get('symbol', 'AAPL')
+        population_size = data.get('population_size', 20)
+        num_generations = data.get('num_generations', 50)
+
+        # Validate parameters
+        population_size = max(5, min(100, population_size))
+        num_generations = max(5, min(200, num_generations))
+
+        ga_rl_system = IntegratedTradingSystem(
+            symbol=symbol,
+            population_size=population_size,
+            num_generations=num_generations,
+            model_dir="./models/ga_rl"
+        )
+
+        logger.info(f"GA+RL system initialized for {symbol} with pop={population_size}, gen={num_generations}")
+
+        return jsonify({
+            "status": "initialized",
+            "symbol": symbol,
+            "population_size": population_size,
+            "num_generations": num_generations,
+            "message": "GA+RL system initialized successfully"
+        }), 200
+
+    except Exception as e:
+        logger.error(f"Error initializing GA+RL: {e}")
+        return jsonify({"error": f"Failed to initialize GA+RL: {str(e)}"}), 500
+
+
+@app.route('/ga-rl/train', methods=['POST'])
+@token_required
+@track_metrics
+@rate_limit(max_requests=5, window=3600)
+def start_ga_rl_training(current_user):
+    """Start GA+RL training with market data."""
+    try:
+        if not GA_RL_AVAILABLE:
+            return jsonify({"error": "GA+RL module not available"}), 400
+
+        global ga_rl_system, ga_rl_training_thread
+
+        if ga_rl_system is None:
+            return jsonify({"error": "GA+RL system not initialized. Call /ga-rl/initialize first."}), 400
+
+        if ga_rl_system.training_manager.is_training:
+            return jsonify({"error": "Training already in progress"}), 400
+
+        data = request.get_json() or {}
+        symbol = data.get('symbol', ga_rl_system.symbol)
+        start_date = data.get('start_date')
+        end_date = data.get('end_date')
+
+        # Fetch market data from database
+        import pandas as pd
+
+        with get_db_connection() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                query = """
+                    SELECT datetime, open, high, low, close, volume
+                    FROM market_data_ohlcv
+                    WHERE symbol = %s
+                """
+                params = [symbol.upper()]
+
+                if start_date and end_date:
+                    query += " AND datetime BETWEEN %s AND %s"
+                    params.extend([start_date, end_date])
+
+                query += " ORDER BY datetime LIMIT 5000"
+                cur.execute(query, params)
+                rows = cur.fetchall()
+
+        if not rows or len(rows) < 100:
+            return jsonify({
+                "error": f"Insufficient market data for {symbol}. Need at least 100 data points, found {len(rows) if rows else 0}."
+            }), 400
+
+        # Convert to DataFrame
+        market_data = pd.DataFrame(rows)
+        market_data['datetime'] = pd.to_datetime(market_data['datetime'])
+        for col in ['open', 'high', 'low', 'close']:
+            market_data[col] = market_data[col].astype(float)
+        market_data['volume'] = market_data['volume'].astype(int)
+
+        logger.info(f"Starting GA+RL training with {len(market_data)} data points for {symbol}")
+
+        # Define progress callback that emits WebSocket updates
+        def training_progress_callback(info):
+            socketio.emit('ga_rl_progress', {
+                'generation': info['generation'],
+                'best_fitness': info['best_fitness'],
+                'avg_fitness': info['avg_fitness'],
+                'generation_time': info.get('generation_time', 0),
+                'timestamp': time.time()
+            })
+
+        # Start training in background thread
+        def run_training():
+            try:
+                results = ga_rl_system.train(market_data, training_progress_callback)
+                socketio.emit('ga_rl_complete', {
+                    'success': results.get('success', False),
+                    'results': results,
+                    'timestamp': time.time()
+                })
+            except Exception as e:
+                logger.error(f"GA+RL training error: {e}")
+                socketio.emit('ga_rl_error', {
+                    'error': str(e),
+                    'timestamp': time.time()
+                })
+
+        ga_rl_training_thread = threading.Thread(target=run_training, daemon=True)
+        ga_rl_training_thread.start()
+
+        return jsonify({
+            "status": "training_started",
+            "symbol": symbol,
+            "data_points": len(market_data),
+            "message": "GA+RL training started. Monitor progress via WebSocket events."
+        }), 200
+
+    except Exception as e:
+        logger.error(f"Error starting GA+RL training: {e}")
+        return jsonify({"error": f"Failed to start training: {str(e)}"}), 500
+
+
+@app.route('/ga-rl/stop', methods=['POST'])
+@token_required
+@track_metrics
+@rate_limit(max_requests=10, window=3600)
+def stop_ga_rl_training(current_user):
+    """Stop ongoing GA+RL training."""
+    try:
+        if not GA_RL_AVAILABLE:
+            return jsonify({"error": "GA+RL module not available"}), 400
+
+        global ga_rl_system
+
+        if ga_rl_system is None:
+            return jsonify({"error": "GA+RL system not initialized"}), 400
+
+        if not ga_rl_system.training_manager.is_training:
+            return jsonify({"message": "No training in progress"}), 200
+
+        ga_rl_system.training_manager.stop_training()
+
+        return jsonify({
+            "status": "stopping",
+            "message": "Training stop signal sent. Training will stop after current generation."
+        }), 200
+
+    except Exception as e:
+        logger.error(f"Error stopping GA+RL training: {e}")
+        return jsonify({"error": f"Failed to stop training: {str(e)}"}), 500
+
+
+@app.route('/ga-rl/signal', methods=['POST'])
+@token_required
+@track_metrics
+@rate_limit(max_requests=100, window=3600)
+def get_ga_rl_signal(current_user):
+    """Get trading signal from trained GA+RL agent."""
+    try:
+        if not GA_RL_AVAILABLE:
+            return jsonify({"error": "GA+RL module not available"}), 400
+
+        global ga_rl_system
+
+        if ga_rl_system is None:
+            return jsonify({"error": "GA+RL system not initialized"}), 400
+
+        if ga_rl_system.trading_agent is None:
+            return jsonify({"error": "No trained agent available. Run training first."}), 400
+
+        data = request.get_json() or {}
+
+        # Build market state from request or use defaults
+        market_state = {
+            'price_change_1d': data.get('price_change_1d', 0),
+            'price_change_5d': data.get('price_change_5d', 0),
+            'price_change_20d': data.get('price_change_20d', 0),
+            'volume_ratio': data.get('volume_ratio', 1),
+            'rsi': data.get('rsi', 50),
+            'macd': data.get('macd', 0),
+            'macd_signal': data.get('macd_signal', 0),
+            'bb_position': data.get('bb_position', 0.5),
+            'position': data.get('position', 0),
+            'portfolio_value_change': data.get('portfolio_value_change', 0),
+            'time_in_position': data.get('time_in_position', 0)
+        }
+
+        signal = ga_rl_system.get_trading_signal(market_state)
+
+        return jsonify({
+            "signal": signal,
+            "market_state": market_state,
+            "timestamp": time.time()
+        }), 200
+
+    except Exception as e:
+        logger.error(f"Error getting GA+RL signal: {e}")
+        return jsonify({"error": f"Failed to get signal: {str(e)}"}), 500
+
+
+@app.route('/ga-rl/history', methods=['GET'])
+@token_required
+@track_metrics
+@rate_limit(max_requests=50, window=3600)
+def get_ga_rl_history(current_user):
+    """Get evolution history from GA+RL training."""
+    try:
+        if not GA_RL_AVAILABLE:
+            return jsonify({"error": "GA+RL module not available"}), 400
+
+        global ga_rl_system
+
+        if ga_rl_system is None:
+            return jsonify({"error": "GA+RL system not initialized"}), 400
+
+        history = ga_rl_system.training_manager.get_evolution_history()
+
+        return jsonify({
+            "history": history,
+            "generations_completed": len(history),
+            "best_chromosome": ga_rl_system.current_chromosome.to_dict() if ga_rl_system.current_chromosome else None
+        }), 200
+
+    except Exception as e:
+        logger.error(f"Error getting GA+RL history: {e}")
+        return jsonify({"error": f"Failed to get history: {str(e)}"}), 500
+
 
 @socketio.on('connect')
 def handle_connect():
