@@ -31,12 +31,22 @@ DATABASE_URL = os.environ.get(
     'postgresql://stock_user:stock_password@localhost:5432/stock_market'
 )
 
+# Market data path from environment (set in docker-compose.yml or .env)
+MARKET_DATA_PATH = os.environ.get('MARKET_DATA_PATH', '/data/market')
+
 # Data paths - supports both Docker and local
+# Priority order: env var, Docker mount, Windows local, WSL
 DATA_PATHS = [
-    '/data/market/stock_full_1min_adjsplitdiv',  # Docker mount
+    MARKET_DATA_PATH,  # From environment variable
+    os.path.join(MARKET_DATA_PATH, 'stock_full_1min_adjsplitdiv'),  # Subdirectory
+    '/data/market',  # Docker mount root
+    '/data/market/stock_full_1min_adjsplitdiv',  # Docker mount subdirectory
     'F:/Market Data/Extracted/stock_full_1min_adjsplitdiv',  # Windows local
     '/mnt/f/Market Data/Extracted/stock_full_1min_adjsplitdiv',  # WSL
 ]
+
+# Supported file extensions for market data
+SUPPORTED_EXTENSIONS = ['.csv', '.txt']
 
 # Popular symbols to load first
 POPULAR_SYMBOLS = [
@@ -49,11 +59,19 @@ BATCH_SIZE = 10000  # Number of rows to insert at once
 
 
 def get_data_path():
-    """Find the data directory."""
+    """Find the data directory containing CSV or TXT market data files."""
     for path in DATA_PATHS:
-        if os.path.exists(path):
-            return path
-    raise FileNotFoundError(f"Data directory not found. Tried: {DATA_PATHS}")
+        if os.path.exists(path) and os.path.isdir(path):
+            # Check if directory contains any supported data files
+            for f in os.listdir(path):
+                if any(f.lower().endswith(ext) for ext in SUPPORTED_EXTENSIONS):
+                    logger.info(f"Found data directory with market files: {path}")
+                    return path
+    raise FileNotFoundError(
+        f"Data directory not found or contains no CSV/TXT files. "
+        f"Tried: {DATA_PATHS}. "
+        f"Set MARKET_DATA_PATH environment variable to your data directory."
+    )
 
 
 def get_db_connection():
@@ -172,12 +190,28 @@ def insert_batch(conn, batch):
         return inserted
 
 
+def find_symbol_file(data_path, symbol):
+    """Find the data file for a symbol (supports .csv and .txt extensions)."""
+    for ext in SUPPORTED_EXTENSIONS:
+        filepath = os.path.join(data_path, f"{symbol}{ext}")
+        if os.path.exists(filepath):
+            return filepath
+        # Also try uppercase/lowercase variants
+        filepath_upper = os.path.join(data_path, f"{symbol.upper()}{ext}")
+        if os.path.exists(filepath_upper):
+            return filepath_upper
+        filepath_lower = os.path.join(data_path, f"{symbol.lower()}{ext}")
+        if os.path.exists(filepath_lower):
+            return filepath_lower
+    return None
+
+
 def load_symbol(conn, data_path, symbol, skip_existing=True):
     """Load data for a single symbol."""
-    filepath = os.path.join(data_path, f"{symbol}.csv")
+    filepath = find_symbol_file(data_path, symbol)
 
-    if not os.path.exists(filepath):
-        logger.warning(f"File not found: {filepath}")
+    if not filepath:
+        logger.warning(f"File not found for symbol {symbol} in {data_path}")
         return 0
 
     if skip_existing:
@@ -204,12 +238,17 @@ def load_symbol(conn, data_path, symbol, skip_existing=True):
 
 
 def get_available_symbols(data_path):
-    """Get list of available symbol CSV files."""
-    symbols = []
+    """Get list of available symbol files (CSV or TXT)."""
+    symbols = set()  # Use set to avoid duplicates
     for f in os.listdir(data_path):
-        if f.endswith('.csv'):
-            symbols.append(f[:-4])  # Remove .csv extension
-    return sorted(symbols)
+        f_lower = f.lower()
+        for ext in SUPPORTED_EXTENSIONS:
+            if f_lower.endswith(ext):
+                # Remove extension to get symbol name
+                symbol = f[:-(len(ext))].upper()
+                symbols.add(symbol)
+                break
+    return sorted(list(symbols))
 
 
 def load_popular_symbols(conn, data_path):

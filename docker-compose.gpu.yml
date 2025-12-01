@@ -1,0 +1,15 @@
+# GPU Support Override
+# Use with: docker compose -f docker-compose.yml -f docker-compose.gpu.yml up
+# Or set ENABLE_GPU=true and use the start script
+
+services:
+  python-agents:
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]

@@ -1589,6 +1589,193 @@ def get_latest_market_data(current_user, symbol):
         logger.error(f"Error getting latest market data: {e}")
         return jsonify({"error": "Failed to retrieve market data"}), 500
 
+# Import data loader for CSV/TXT file support
+from data_loader import (
+    get_data_path, get_available_symbols as get_file_symbols,
+    load_symbol, ensure_table_exists, MARKET_DATA_PATH
+)
+
+
+@app.route('/market-data/load', methods=['POST'])
+@token_required
+@track_metrics
+@rate_limit(max_requests=20, window=3600)
+def load_market_data_files(current_user):
+    """Load market data from CSV/TXT files into the database."""
+    try:
+        data = request.get_json() or {}
+        symbol = data.get('symbol')
+        load_all = data.get('load_all', False)
+        load_popular = data.get('load_popular', False)
+        limit = data.get('limit', 10)
+
+        # Emit progress via WebSocket
+        socketio.emit('data_load_log', {
+            'level': 'info',
+            'message': f'Starting data load process...',
+            'timestamp': time.time()
+        })
+
+        # Find data directory
+        try:
+            data_path = get_data_path()
+            socketio.emit('data_load_log', {
+                'level': 'info',
+                'message': f'Found data directory: {data_path}',
+                'timestamp': time.time()
+            })
+        except FileNotFoundError as e:
+            return jsonify({
+                "error": str(e),
+                "market_data_path": MARKET_DATA_PATH,
+                "hint": "Set MARKET_DATA_PATH in .env to point to your data directory"
+            }), 400
+
+        # Get available symbols from files
+        available_symbols = get_file_symbols(data_path)
+        socketio.emit('data_load_log', {
+            'level': 'info',
+            'message': f'Found {len(available_symbols)} symbol files',
+            'timestamp': time.time()
+        })
+
+        with get_db_connection() as conn:
+            # Ensure table exists
+            ensure_table_exists(conn)
+
+            loaded = []
+
+            if symbol:
+                # Load specific symbol
+                symbol = symbol.upper()
+                if symbol not in available_symbols:
+                    return jsonify({
+                        "error": f"Symbol {symbol} not found in data files",
+                        "available_symbols": available_symbols[:20]  # Show first 20
+                    }), 404
+
+                socketio.emit('data_load_log', {
+                    'level': 'info',
+                    'message': f'Loading {symbol}...',
+                    'timestamp': time.time()
+                })
+
+                rows = load_symbol(conn, data_path, symbol, skip_existing=True)
+                loaded.append({"symbol": symbol, "rows_loaded": rows})
+
+                socketio.emit('data_load_log', {
+                    'level': 'success',
+                    'message': f'Loaded {rows:,} rows for {symbol}',
+                    'timestamp': time.time()
+                })
+
+            elif load_popular:
+                # Load popular symbols
+                from data_loader import POPULAR_SYMBOLS
+                symbols_to_load = [s for s in POPULAR_SYMBOLS if s in available_symbols]
+
+                socketio.emit('data_load_log', {
+                    'level': 'info',
+                    'message': f'Loading {len(symbols_to_load)} popular symbols...',
+                    'timestamp': time.time()
+                })
+
+                for i, sym in enumerate(symbols_to_load, 1):
+                    socketio.emit('data_load_log', {
+                        'level': 'info',
+                        'message': f'[{i}/{len(symbols_to_load)}] Loading {sym}...',
+                        'timestamp': time.time()
+                    })
+                    rows = load_symbol(conn, data_path, sym, skip_existing=True)
+                    loaded.append({"symbol": sym, "rows_loaded": rows})
+
+                socketio.emit('data_load_log', {
+                    'level': 'success',
+                    'message': f'Completed loading {len(loaded)} popular symbols',
+                    'timestamp': time.time()
+                })
+
+            elif load_all:
+                # Load all symbols (with limit)
+                symbols_to_load = available_symbols[:limit]
+
+                socketio.emit('data_load_log', {
+                    'level': 'info',
+                    'message': f'Loading {len(symbols_to_load)} symbols (limit: {limit})...',
+                    'timestamp': time.time()
+                })
+
+                for i, sym in enumerate(symbols_to_load, 1):
+                    socketio.emit('data_load_log', {
+                        'level': 'info',
+                        'message': f'[{i}/{len(symbols_to_load)}] Loading {sym}...',
+                        'timestamp': time.time()
+                    })
+                    rows = load_symbol(conn, data_path, sym, skip_existing=True)
+                    loaded.append({"symbol": sym, "rows_loaded": rows})
+
+                socketio.emit('data_load_log', {
+                    'level': 'success',
+                    'message': f'Completed loading {len(loaded)} symbols',
+                    'timestamp': time.time()
+                })
+            else:
+                return jsonify({
+                    "error": "Specify 'symbol', 'load_popular', or 'load_all' parameter",
+                    "available_symbols": available_symbols[:50],  # Show first 50
+                    "total_available": len(available_symbols),
+                    "data_path": data_path
+                }), 400
+
+        total_rows = sum(item['rows_loaded'] for item in loaded)
+        return jsonify({
+            "status": "success",
+            "loaded": loaded,
+            "total_symbols": len(loaded),
+            "total_rows": total_rows,
+            "data_path": data_path
+        }), 200
+
+    except Exception as e:
+        logger.error(f"Error loading market data: {e}")
+        socketio.emit('data_load_log', {
+            'level': 'error',
+            'message': f'Error loading data: {str(e)}',
+            'timestamp': time.time()
+        })
+        return jsonify({"error": f"Failed to load market data: {str(e)}"}), 500
+
+
+@app.route('/market-data/files', methods=['GET'])
+@token_required
+@rate_limit(max_requests=50, window=3600)
+def list_market_data_files(current_user):
+    """List available market data files that can be loaded."""
+    try:
+        try:
+            data_path = get_data_path()
+        except FileNotFoundError as e:
+            return jsonify({
+                "error": str(e),
+                "market_data_path": MARKET_DATA_PATH,
+                "hint": "Set MARKET_DATA_PATH in .env to point to your data directory"
+            }), 400
+
+        available_symbols = get_file_symbols(data_path)
+
+        return jsonify({
+            "data_path": data_path,
+            "market_data_path_env": MARKET_DATA_PATH,
+            "available_symbols": available_symbols,
+            "count": len(available_symbols),
+            "supported_extensions": ['.csv', '.txt']
+        }), 200
+
+    except Exception as e:
+        logger.error(f"Error listing market data files: {e}")
+        return jsonify({"error": f"Failed to list files: {str(e)}"}), 500
+
+
 @app.route('/market-data/<symbol>/daily', methods=['GET'])
 @token_required
 @rate_limit(max_requests=50, window=3600)
