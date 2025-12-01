@@ -42,7 +42,14 @@
       "Bash(ipconfig:*)",
       "Bash(scp:*)",
       "Bash(net share:*)",
-      "Bash(net share \"MarketData=F:\\Market Data\\Extracted\" /grant:Everyone,READ)"
+      "Bash(net share \"MarketData=F:\\Market Data\\Extracted\" /grant:Everyone,READ)",
+      "Bash(docker stop:*)",
+      "Bash(docker rm:*)",
+      "Bash(docker run:*)",
+      "Bash(docker build:*)",
+      "Bash(npm start)",
+      "Bash(tasklist:*)",
+      "Bash(taskkill:*)"
     ],
     "deny": [],
     "ask": []

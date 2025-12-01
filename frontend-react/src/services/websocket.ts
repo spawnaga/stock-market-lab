@@ -5,7 +5,7 @@
 
 import { io, Socket } from 'socket.io-client';
 
-const WS_URL = process.env.REACT_APP_WS_URL || 'http://localhost:5100';
+const WS_URL = 'http://192.168.1.129:5000';
 
 // Event types
 export interface AgentDecisionEvent {

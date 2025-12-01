@@ -120,7 +120,7 @@ function App() {
   useEffect(() => {
     const fetchHealthStatus = async () => {
       try {
-        const response = await fetch(`${process.env.REACT_APP_API_URL || 'http://localhost:8080'}/health`);
+        const response = await fetch('http://192.168.1.129:5000/health');
         if (response.ok) {
           const health = await response.json();
           setHealthStatus(health);
@@ -132,7 +132,7 @@ function App() {
 
     const fetchMarketData = async () => {
       try {
-        const response = await fetch(`${process.env.REACT_APP_API_URL || 'http://localhost:8080'}/api/market/data`);
+        const response = await fetch('http://192.168.1.129:5000/api/market/data');
         if (response.ok) {
           const data = await response.json();
           setMarketData(data);

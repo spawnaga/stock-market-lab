@@ -3,7 +3,7 @@
  * Handles all backend API communications
  */
 
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5100';
+const API_URL = 'http://192.168.1.129:5000';
 
 // Token management
 let authToken: string | null = null;

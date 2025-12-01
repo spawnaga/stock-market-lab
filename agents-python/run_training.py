@@ -64,9 +64,10 @@ def main():
 
     print("\nInitializing GA+RL training system...")
     system = IntegratedTradingSystem(
+        symbol='SYNTH',
         population_size=10,      # Small for testing
         num_generations=5,       # Small for testing
-        training_episodes=20,    # Episodes per chromosome
+        model_dir='/tmp/models',  # Writable directory inside container
         initial_capital=100000.0
     )
 
@@ -76,9 +77,11 @@ def main():
     print("-" * 60)
 
     try:
-        system.run_full_optimization(data)
+        # Run training with market data
+        result = system.train(market_data=data)
         print("\n" + "=" * 60)
         print("Training completed successfully!")
+        print(f"Result: {result}")
         print("=" * 60)
     except Exception as e:
         print(f"\nError during training: {e}")
