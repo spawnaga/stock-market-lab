@@ -230,25 +230,28 @@ def rate_limit(max_requests=100, window=3600):
         def decorated(*args, **kwargs):
             client_ip = request.remote_addr
             now = time.time()
-            
+
             # Initialize rate limit for this IP if not exists
             if client_ip not in rate_limit_store:
                 rate_limit_store[client_ip] = []
-            
+
             # Clean old requests outside the window
             rate_limit_store[client_ip] = [
                 req_time for req_time in rate_limit_store[client_ip]
                 if now - req_time < window
             ]
-            
+
             # Check if limit exceeded
             if len(rate_limit_store[client_ip]) >= max_requests:
                 system_metrics['error_count'] += 1
-                return jsonify({'error': 'Rate limit exceeded'}), 429
-                
+                # Use make_response to ensure CORS headers are applied
+                from flask import make_response
+                response = make_response(jsonify({'error': 'Rate limit exceeded'}), 429)
+                return response
+
             # Add current request
             rate_limit_store[client_ip].append(now)
-            
+
             return f(*args, **kwargs)
         return decorated
     return decorator
@@ -940,7 +943,7 @@ def start_agents():
     logger.info("All agents started successfully")
 
 @app.route('/login', methods=['POST'])
-@rate_limit(max_requests=5, window=300)  # 5 requests per 5 minutes
+@rate_limit(max_requests=50, window=300)  # 50 requests per 5 minutes (relaxed for development)
 def login():
     """Login endpoint to get JWT token."""
     try:

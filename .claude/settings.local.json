@@ -7,7 +7,8 @@
       "Bash(findstr:*)",
       "Bash(netsh interface ipv4 show excludedportrange protocol=tcp:*)",
       "Bash(curl:*)",
-      "Bash(docker exec:*)"
+      "Bash(docker exec:*)",
+      "Bash(docker logs:*)"
     ],
     "deny": [],
     "ask": []

@@ -2,7 +2,6 @@ import React, { useState, useEffect, useCallback } from 'react';
 import apiService, {
   GARLStatus,
   GARLHistory,
-  GARLChromosome,
   GARLSignal
 } from '../services/api';
 import './GARLTraining.css';
@@ -21,6 +20,7 @@ const GARLTraining: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
 
   const [config, setConfig] = useState<TrainingConfig>({
     symbol: 'AAPL',
@@ -32,26 +32,49 @@ const GARLTraining: React.FC = () => {
 
   const [testSignal, setTestSignal] = useState<GARLSignal | null>(null);
 
+  // Auto-login with demo credentials
+  useEffect(() => {
+    const autoLogin = async () => {
+      if (!apiService.isAuthenticated()) {
+        try {
+          await apiService.login('admin', 'admin');
+          setIsLoggedIn(true);
+        } catch (err) {
+          console.error('Auto-login failed:', err);
+          setError('Failed to authenticate. Please refresh the page.');
+        }
+      } else {
+        setIsLoggedIn(true);
+      }
+    };
+    autoLogin();
+  }, []);
+
   // Fetch status
   const fetchStatus = useCallback(async () => {
+    if (!isLoggedIn) return;
     try {
       const data = await apiService.getGARLStatus();
       setStatus(data);
       setError(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch status');
+      // Only show error if it's not an auth issue (handled by auto-login)
+      if (err instanceof Error && !err.message.includes('Unauthorized')) {
+        setError(err.message);
+      }
     }
-  }, []);
+  }, [isLoggedIn]);
 
   // Fetch history
   const fetchHistory = useCallback(async () => {
+    if (!isLoggedIn) return;
     try {
       const data = await apiService.getGARLHistory();
       setHistory(data);
     } catch {
       // History may not be available if not initialized
     }
-  }, []);
+  }, [isLoggedIn]);
 
   // Initialize system
   const handleInitialize = async () => {
@@ -120,8 +143,10 @@ const GARLTraining: React.FC = () => {
     }
   };
 
-  // Initial load
+  // Initial load - only after logged in
   useEffect(() => {
+    if (!isLoggedIn) return;
+
     const load = async () => {
       setLoading(true);
       await fetchStatus();
@@ -136,10 +161,10 @@ const GARLTraining: React.FC = () => {
       if (status?.is_training) {
         fetchHistory();
       }
-    }, 3000);
+    }, 5000);
 
     return () => clearInterval(interval);
-  }, [fetchStatus, fetchHistory, status?.is_training]);
+  }, [isLoggedIn, fetchStatus, fetchHistory, status?.is_training]);
 
   // Clear messages after timeout
   useEffect(() => {
@@ -148,6 +173,17 @@ const GARLTraining: React.FC = () => {
       return () => clearTimeout(timer);
     }
   }, [successMessage]);
+
+  if (!isLoggedIn) {
+    return (
+      <div className="garl-training">
+        <div className="loading-container">
+          <div className="spinner"></div>
+          <p>Authenticating...</p>
+        </div>
+      </div>
+    );
+  }
 
   if (loading) {
     return (
