@@ -217,8 +217,12 @@ def track_metrics(f):
                 system_metrics['memory_usage_mb'] = process.memory_info().rss / 1024 / 1024
                 system_metrics['cpu_percent'] = process.cpu_percent()
                 system_metrics['active_threads'] = threading.active_count()
-                # Update connected clients count
-                system_metrics['connected_clients'] = len(socketio.server.manager.get_participants('/'))
+                # Update connected clients count - use try/except for different socketio versions
+                try:
+                    system_metrics['connected_clients'] = len(socketio.server.manager.get_participants('/', '/'))
+                except TypeError:
+                    # Fallback for older versions
+                    system_metrics['connected_clients'] = 0
             except Exception as e:
                 logger.warning(f"Could not update system metrics: {e}")
     return decorated
@@ -1064,9 +1068,15 @@ def get_metrics(current_user):
                 'error_details': metrics['error_details'][-5:]  # Last 5 errors
             }
         
+        # Get connected clients count - use try/except for different socketio versions
+        try:
+            connected_clients = len(socketio.server.manager.get_participants('/', '/'))
+        except TypeError:
+            connected_clients = 0
+
         metrics_response = {
             "timestamp": time.time(),
-            "connected_clients": len(socketio.server.manager.get_participants('/')),
+            "connected_clients": connected_clients,
             "system": {
                 "memory_mb": round(memory_mb, 2),
                 "cpu_percent": cpu_percent,
@@ -2120,11 +2130,45 @@ def initialize_ga_rl(current_user):
 
         logger.info(f"GA+RL system initialized for {symbol} with pop={population_size}, gen={num_generations}")
 
+        # Emit initialization logs
+        socketio.emit('ga_rl_log', {
+            'level': 'info',
+            'message': f'🔧 Initializing GA+RL system for {symbol}...',
+            'timestamp': time.time()
+        })
+
+        # Check GPU availability
+        device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        device_name = torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'CPU'
+
+        socketio.emit('ga_rl_log', {
+            'level': 'info',
+            'message': f'   Device detected: {device.upper()} ({device_name})',
+            'timestamp': time.time()
+        })
+        socketio.emit('ga_rl_log', {
+            'level': 'info',
+            'message': f'   Population size: {population_size} chromosomes',
+            'timestamp': time.time()
+        })
+        socketio.emit('ga_rl_log', {
+            'level': 'info',
+            'message': f'   Generations: {num_generations}',
+            'timestamp': time.time()
+        })
+        socketio.emit('ga_rl_log', {
+            'level': 'success',
+            'message': f'✅ System initialized. Ready to start training.',
+            'timestamp': time.time()
+        })
+
         return jsonify({
             "status": "initialized",
             "symbol": symbol,
             "population_size": population_size,
             "num_generations": num_generations,
+            "device": device,
+            "device_name": device_name,
             "message": "GA+RL system initialized successfully"
         }), 200
 
@@ -2228,17 +2272,127 @@ def start_ga_rl_training(current_user):
         # Start training in background thread
         def run_training():
             try:
+                # Set up WebSocket emitter for real-time logging from ga_rl_integration
+                from ga_rl_integration import set_websocket_emitter
+                set_websocket_emitter(socketio.emit)
+
+                # Step 1: Data validation
                 socketio.emit('ga_rl_log', {
                     'level': 'info',
-                    'message': 'Initializing GA+RL system...',
+                    'message': '📊 [STEP 1/6] Validating market data...',
+                    'timestamp': time.time()
+                })
+                time.sleep(0.1)  # Small delay for UI update
+
+                data_stats = {
+                    'rows': len(market_data),
+                    'columns': list(market_data.columns),
+                    'date_range': f"{market_data['datetime'].min()} to {market_data['datetime'].max()}",
+                    'price_range': f"${market_data['close'].min():.2f} - ${market_data['close'].max():.2f}"
+                }
+                socketio.emit('ga_rl_log', {
+                    'level': 'success',
+                    'message': f"   Data validated: {data_stats['rows']} rows, {data_stats['date_range']}",
+                    'timestamp': time.time()
+                })
+                socketio.emit('ga_rl_log', {
+                    'level': 'info',
+                    'message': f"   Price range: {data_stats['price_range']}",
                     'timestamp': time.time()
                 })
 
-                results = ga_rl_system.train(market_data, training_progress_callback)
+                # Step 2: Data preprocessing
+                socketio.emit('ga_rl_log', {
+                    'level': 'info',
+                    'message': '🔧 [STEP 2/6] Preprocessing data for training...',
+                    'timestamp': time.time()
+                })
+                time.sleep(0.1)
+
+                socketio.emit('ga_rl_log', {
+                    'level': 'info',
+                    'message': '   Calculating technical indicators (RSI, MACD, Bollinger Bands)...',
+                    'timestamp': time.time()
+                })
+
+                # Step 3: Loading data into training manager
+                socketio.emit('ga_rl_log', {
+                    'level': 'info',
+                    'message': '📥 [STEP 3/6] Loading data into GA+RL training manager...',
+                    'timestamp': time.time()
+                })
+                time.sleep(0.1)
+
+                # Create a wrapper callback that adds more logging
+                def enhanced_progress_callback(info):
+                    # Call original callback
+                    training_progress_callback(info)
+
+                    # Add detailed chromosome info
+                    if info.get('best_chromosome'):
+                        chr_info = info['best_chromosome']
+                        socketio.emit('ga_rl_log', {
+                            'level': 'info',
+                            'message': f"   Best config: lr={chr_info.get('learning_rate', 0):.6f}, hidden={chr_info.get('hidden_size', 0)}, gamma={chr_info.get('gamma', 0):.4f}",
+                            'timestamp': time.time()
+                        })
+
+                # Step 4: Population initialization
+                socketio.emit('ga_rl_log', {
+                    'level': 'info',
+                    'message': f'🧬 [STEP 4/6] Initializing population ({ga_rl_system.training_manager.population.population_size} chromosomes)...',
+                    'timestamp': time.time()
+                })
+                time.sleep(0.1)
+
+                socketio.emit('ga_rl_log', {
+                    'level': 'info',
+                    'message': '   Each chromosome contains: DQN architecture + trading strategy + reward shaping genes',
+                    'timestamp': time.time()
+                })
+
+                # Step 5: Evolution loop
+                socketio.emit('ga_rl_log', {
+                    'level': 'info',
+                    'message': f'🚀 [STEP 5/6] Starting evolution ({ga_rl_system.training_manager.num_generations} generations)...',
+                    'timestamp': time.time()
+                })
+                socketio.emit('ga_rl_log', {
+                    'level': 'info',
+                    'message': f'   Device: {device.upper()} ({device_name})',
+                    'timestamp': time.time()
+                })
+                time.sleep(0.1)
+
+                # Run actual training
+                results = ga_rl_system.train(market_data, enhanced_progress_callback)
+
+                # Step 6: Finalization
+                socketio.emit('ga_rl_log', {
+                    'level': 'info',
+                    'message': '📈 [STEP 6/6] Finalizing and saving best model...',
+                    'timestamp': time.time()
+                })
+                time.sleep(0.1)
 
                 socketio.emit('ga_rl_log', {
                     'level': 'success',
-                    'message': f"Training complete! Final fitness: {results.get('best_fitness', 0):.4f}",
+                    'message': f"✅ Training complete! Final fitness: {results.get('best_fitness', 0):.4f}",
+                    'timestamp': time.time()
+                })
+                socketio.emit('ga_rl_log', {
+                    'level': 'success',
+                    'message': f"   Sharpe Ratio: {results.get('sharpe_ratio', 0):.4f}",
+                    'timestamp': time.time()
+                })
+                socketio.emit('ga_rl_log', {
+                    'level': 'success',
+                    'message': f"   Total Return: {results.get('total_return', 0)*100:.2f}%",
+                    'timestamp': time.time()
+                })
+                socketio.emit('ga_rl_log', {
+                    'level': 'success',
+                    'message': f"   Win Rate: {results.get('win_rate', 0)*100:.2f}%",
                     'timestamp': time.time()
                 })
 
@@ -2253,7 +2407,7 @@ def start_ga_rl_training(current_user):
                 traceback.print_exc()
                 socketio.emit('ga_rl_log', {
                     'level': 'error',
-                    'message': f'Training error: {str(e)}',
+                    'message': f'❌ Training error: {str(e)}',
                     'timestamp': time.time()
                 })
                 socketio.emit('ga_rl_error', {

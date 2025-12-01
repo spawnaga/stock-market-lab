@@ -36,6 +36,30 @@ from reinforcement_learning import (
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# Global WebSocket emitter - set by main.py when training starts
+_websocket_emitter = None
+
+
+def set_websocket_emitter(emitter):
+    """Set the WebSocket emitter function for real-time logging."""
+    global _websocket_emitter
+    _websocket_emitter = emitter
+
+
+def emit_log(level: str, message: str):
+    """Emit a log message via WebSocket if available, also log locally."""
+    logger.info(message)
+    if _websocket_emitter:
+        try:
+            import time
+            _websocket_emitter('ga_rl_log', {
+                'level': level,
+                'message': message,
+                'timestamp': time.time()
+            })
+        except Exception as e:
+            logger.warning(f"Failed to emit WebSocket log: {e}")
+
 
 @dataclass
 class GADQNChromosome:
@@ -501,31 +525,32 @@ class GADQNTrainingManager:
         device = 'cuda' if torch.cuda.is_available() else 'cpu'
         device_name = torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'CPU'
 
-        logger.info("=" * 60)
-        logger.info("STARTING GA+RL EVOLUTION")
-        logger.info(f"Device: {device.upper()} ({device_name})")
-        logger.info(f"Population size: {self.population_size}")
-        logger.info(f"Generations: {self.num_generations}")
-        logger.info(f"Training data points: {len(self.training_data)}")
-        logger.info("=" * 60)
+        emit_log('info', "=" * 50)
+        emit_log('info', "🧬 STARTING GA+RL EVOLUTION")
+        emit_log('info', f"   Device: {device.upper()} ({device_name})")
+        emit_log('info', f"   Population: {self.population_size} chromosomes")
+        emit_log('info', f"   Generations: {self.num_generations}")
+        emit_log('info', f"   Training episodes per chromosome: {self.training_episodes}")
+        emit_log('info', f"   Training data: {len(self.training_data)} samples")
+        emit_log('info', "=" * 50)
 
         # Initialize population
-        logger.info("Initializing population...")
+        emit_log('info', "🔄 Creating initial random population...")
         self.population.initialize_population()
-        logger.info(f"Population initialized with {len(self.population.population)} chromosomes")
+        emit_log('success', f"   ✓ Created {len(self.population.population)} chromosomes with random genes")
 
         try:
             for generation in range(self.num_generations):
                 if self._stop_event.is_set():
-                    logger.info("Training stopped by user")
+                    emit_log('warning', "⚠️ Training stopped by user")
                     break
 
                 self.current_generation = generation
                 generation_start = time.time()
 
-                logger.info("-" * 40)
-                logger.info(f"GENERATION {generation + 1}/{self.num_generations}")
-                logger.info("-" * 40)
+                emit_log('info', "")
+                emit_log('info', f"📊 GENERATION {generation + 1}/{self.num_generations}")
+                emit_log('info', "-" * 40)
 
                 # Evaluate each chromosome in the population
                 for idx, chromosome in enumerate(self.population.population):
@@ -535,7 +560,8 @@ class GADQNTrainingManager:
                     self.current_chromosome_idx = idx
                     chr_start = time.time()
 
-                    logger.info(f"  Evaluating chromosome {idx + 1}/{len(self.population.population)}...")
+                    emit_log('info', f"   🧬 [{idx + 1}/{len(self.population.population)}] Training chromosome...")
+                    emit_log('info', f"      Config: hidden={chromosome.hidden_size}, lr={chromosome.learning_rate:.6f}, batch={chromosome.batch_size}")
 
                     # Evaluate chromosome
                     metrics = self.evaluate_chromosome(
@@ -552,10 +578,7 @@ class GADQNTrainingManager:
                     chromosome.win_rate = metrics['win_rate']
 
                     chr_time = time.time() - chr_start
-                    logger.info(f"    Chromosome {idx + 1}: fitness={chromosome.fitness:.4f}, "
-                               f"sharpe={chromosome.sharpe_ratio:.4f}, "
-                               f"return={chromosome.total_return*100:.2f}%, "
-                               f"time={chr_time:.1f}s")
+                    emit_log('success', f"      ✓ Results: fitness={chromosome.fitness:.4f}, sharpe={chromosome.sharpe_ratio:.4f}, return={chromosome.total_return*100:.2f}% ({chr_time:.1f}s)")
 
                     # Update progress
                     with self._lock:
@@ -570,17 +593,15 @@ class GADQNTrainingManager:
                         }
 
                 # Evolve population
-                logger.info("  Evolving population (selection, crossover, mutation)...")
+                emit_log('info', "   🔀 Evolving population (selection → crossover → mutation)...")
                 self.population.evolve()
 
                 generation_time = time.time() - generation_start
                 best_fitness = self.population.best_chromosome.fitness if self.population.best_chromosome else 0
                 avg_fitness = np.mean([c.fitness for c in self.population.population])
 
-                logger.info(f"  Generation {generation+1} COMPLETE:")
-                logger.info(f"    Best fitness: {best_fitness:.4f}")
-                logger.info(f"    Avg fitness: {avg_fitness:.4f}")
-                logger.info(f"    Time: {generation_time:.1f}s")
+                emit_log('success', f"   ✅ Generation {generation+1} complete!")
+                emit_log('info', f"      Best fitness: {best_fitness:.4f} | Avg: {avg_fitness:.4f} | Time: {generation_time:.1f}s")
 
                 # Call callback if provided
                 if callback:
@@ -594,15 +615,21 @@ class GADQNTrainingManager:
 
             # Final validation of best chromosome
             if self.population.best_chromosome and self.validation_data is not None:
-                logger.info("Running final validation on best chromosome...")
+                emit_log('info', "")
+                emit_log('info', "📋 FINAL VALIDATION")
+                emit_log('info', "-" * 40)
+                emit_log('info', "   Testing best chromosome on validation data...")
                 validation_metrics = self.evaluate_chromosome(
                     self.population.best_chromosome,
                     self.validation_data,
                     self.evaluation_episodes * 2
                 )
-                logger.info(f"Validation results: Sharpe={validation_metrics['sharpe_ratio']:.4f}, "
-                           f"Return={validation_metrics['total_return']*100:.2f}%")
+                emit_log('success', f"   ✓ Validation Sharpe: {validation_metrics['sharpe_ratio']:.4f}")
+                emit_log('success', f"   ✓ Validation Return: {validation_metrics['total_return']*100:.2f}%")
+                emit_log('success', f"   ✓ Validation Win Rate: {validation_metrics['win_rate']*100:.2f}%")
 
+            emit_log('info', "")
+            emit_log('success', "🎉 GA+RL EVOLUTION COMPLETE!")
             return self.population.best_chromosome
 
         finally:
