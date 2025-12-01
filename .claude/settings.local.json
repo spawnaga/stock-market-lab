@@ -31,7 +31,9 @@
       "Bash(cmd /c \"dir \"\"F:\\Market Data\\Extracted\\stock_full_1min_adjsplitdiv\"\" /b\")",
       "Bash(powershell:*)",
       "Bash(git reset:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)"
     ],
     "deny": [],
     "ask": []
