@@ -39,6 +39,26 @@ class TradingAction(IntEnum):
 
 
 @dataclass
+class DQNConfig:
+    """Configuration for DQN agent."""
+    state_size: int = 11
+    action_size: int = 3
+    hidden_size: int = 128
+    learning_rate: float = 0.001
+    gamma: float = 0.99
+    epsilon_start: float = 1.0
+    epsilon_end: float = 0.01
+    epsilon_decay: float = 0.995
+    buffer_size: int = 100000
+    batch_size: int = 64
+    target_update_freq: int = 10
+    tau: float = 0.001
+    use_double_dqn: bool = True
+    use_dueling: bool = True
+    device: str = 'cpu'
+
+
+@dataclass
 class TradingState:
     """Represents the state of the trading environment."""
     # Price features
@@ -480,6 +500,7 @@ class DQNAgent:
 
     def __init__(
         self,
+        config: DQNConfig = None,
         state_dim: int = 11,
         action_dim: int = 3,
         learning_rate: float = 0.001,
@@ -494,6 +515,39 @@ class DQNAgent:
         double_dqn: bool = True,
         device: str = None
     ):
+        # Use config if provided, otherwise use individual parameters
+        if config is not None:
+            self.config = config
+            state_dim = config.state_size
+            action_dim = config.action_size
+            learning_rate = config.learning_rate
+            gamma = config.gamma
+            epsilon_start = config.epsilon_start
+            epsilon_end = config.epsilon_end
+            epsilon_decay = config.epsilon_decay
+            buffer_size = config.buffer_size
+            batch_size = config.batch_size
+            target_update_freq = config.target_update_freq
+            tau = config.tau
+            double_dqn = config.use_double_dqn
+            device = config.device
+        else:
+            self.config = DQNConfig(
+                state_size=state_dim,
+                action_size=action_dim,
+                learning_rate=learning_rate,
+                gamma=gamma,
+                epsilon_start=epsilon_start,
+                epsilon_end=epsilon_end,
+                epsilon_decay=epsilon_decay,
+                buffer_size=buffer_size,
+                batch_size=batch_size,
+                target_update_freq=target_update_freq,
+                tau=tau,
+                use_double_dqn=double_dqn,
+                device=device or 'cpu'
+            )
+
         self.state_dim = state_dim
         self.action_dim = action_dim
         self.gamma = gamma
