@@ -10,7 +10,9 @@
       "Bash(docker exec:*)",
       "Bash(docker logs:*)",
       "Bash(docker restart:*)",
-      "Bash(docker ps:*)"
+      "Bash(docker ps:*)",
+      "Bash(nvidia-smi:*)",
+      "Bash(timeout:*)"
     ],
     "deny": [],
     "ask": []

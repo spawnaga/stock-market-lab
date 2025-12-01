@@ -388,7 +388,7 @@ const GARLTraining: React.FC = () => {
     );
   }
 
-  const progressPercent = metrics
+  const progressPercent = metrics && metrics.totalGenerations > 0
     ? (metrics.currentGeneration / metrics.totalGenerations) * 100
     : 0;
 

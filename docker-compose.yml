@@ -115,6 +115,7 @@ services:
       - REDIS_URL=redis://redis:6379
       - KAFKA_BROKERS=kafka:9092
       - CPP_BACKEND_URL=http://cpp-backend:8080
+      - NVIDIA_VISIBLE_DEVICES=all
     volumes:
       - "F:/Market Data/Extracted:/data/market:ro"
     depends_on:
@@ -133,6 +134,13 @@ services:
       retries: 3
       start_period: 40s
     restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
 
   gpu-acceleration:
     build:

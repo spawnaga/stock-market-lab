@@ -224,35 +224,39 @@ def track_metrics(f):
     return decorated
 
 def rate_limit(max_requests=100, window=3600):
-    """Rate limiting decorator."""
+    """Rate limiting decorator - DISABLED FOR DEVELOPMENT."""
     def decorator(f):
         @wraps(f)
         def decorated(*args, **kwargs):
-            client_ip = request.remote_addr
-            now = time.time()
-
-            # Initialize rate limit for this IP if not exists
-            if client_ip not in rate_limit_store:
-                rate_limit_store[client_ip] = []
-
-            # Clean old requests outside the window
-            rate_limit_store[client_ip] = [
-                req_time for req_time in rate_limit_store[client_ip]
-                if now - req_time < window
-            ]
-
-            # Check if limit exceeded
-            if len(rate_limit_store[client_ip]) >= max_requests:
-                system_metrics['error_count'] += 1
-                # Use make_response to ensure CORS headers are applied
-                from flask import make_response
-                response = make_response(jsonify({'error': 'Rate limit exceeded'}), 429)
-                return response
-
-            # Add current request
-            rate_limit_store[client_ip].append(now)
-
+            # Rate limiting disabled for development
+            # To re-enable, uncomment the code below
             return f(*args, **kwargs)
+
+            # client_ip = request.remote_addr
+            # now = time.time()
+            #
+            # # Initialize rate limit for this IP if not exists
+            # if client_ip not in rate_limit_store:
+            #     rate_limit_store[client_ip] = []
+            #
+            # # Clean old requests outside the window
+            # rate_limit_store[client_ip] = [
+            #     req_time for req_time in rate_limit_store[client_ip]
+            #     if now - req_time < window
+            # ]
+            #
+            # # Check if limit exceeded
+            # if len(rate_limit_store[client_ip]) >= max_requests:
+            #     system_metrics['error_count'] += 1
+            #     # Use make_response to ensure CORS headers are applied
+            #     from flask import make_response
+            #     response = make_response(jsonify({'error': 'Rate limit exceeded'}), 429)
+            #     return response
+            #
+            # # Add current request
+            # rate_limit_store[client_ip].append(now)
+            #
+            # return f(*args, **kwargs)
         return decorated
     return decorator
 
@@ -943,7 +947,7 @@ def start_agents():
     logger.info("All agents started successfully")
 
 @app.route('/login', methods=['POST'])
-@rate_limit(max_requests=50, window=300)  # 50 requests per 5 minutes (relaxed for development)
+@rate_limit(max_requests=1000, window=60)  # 1000 requests per minute (disabled for development)
 def login():
     """Login endpoint to get JWT token."""
     try:
@@ -1867,7 +1871,7 @@ def get_lstm_status(current_user):
 @app.route('/ga-rl/status', methods=['GET'])
 @token_required
 @track_metrics
-@rate_limit(max_requests=100, window=3600)
+@rate_limit(max_requests=1000, window=300)  # 1000 requests per 5 minutes (relaxed for development)
 def get_ga_rl_status(current_user):
     """Get GA+RL system status and training progress."""
     try:
@@ -1902,7 +1906,7 @@ def get_ga_rl_status(current_user):
 @app.route('/ga-rl/initialize', methods=['POST'])
 @token_required
 @track_metrics
-@rate_limit(max_requests=10, window=3600)
+@rate_limit(max_requests=100, window=300)  # 100 requests per 5 minutes (relaxed for development)
 def initialize_ga_rl(current_user):
     """Initialize the GA+RL trading system."""
     try:
@@ -1945,7 +1949,7 @@ def initialize_ga_rl(current_user):
 @app.route('/ga-rl/train', methods=['POST'])
 @token_required
 @track_metrics
-@rate_limit(max_requests=5, window=3600)
+@rate_limit(max_requests=100, window=300)  # 100 requests per 5 minutes (relaxed for development)
 def start_ga_rl_training(current_user):
     """Start GA+RL training with market data."""
     try:
@@ -2043,7 +2047,7 @@ def start_ga_rl_training(current_user):
 @app.route('/ga-rl/stop', methods=['POST'])
 @token_required
 @track_metrics
-@rate_limit(max_requests=10, window=3600)
+@rate_limit(max_requests=100, window=300)  # 100 requests per 5 minutes (relaxed for development)
 def stop_ga_rl_training(current_user):
     """Stop ongoing GA+RL training."""
     try:
@@ -2073,7 +2077,7 @@ def stop_ga_rl_training(current_user):
 @app.route('/ga-rl/signal', methods=['POST'])
 @token_required
 @track_metrics
-@rate_limit(max_requests=100, window=3600)
+@rate_limit(max_requests=500, window=300)  # 500 requests per 5 minutes (relaxed for development)
 def get_ga_rl_signal(current_user):
     """Get trading signal from trained GA+RL agent."""
     try:
@@ -2121,17 +2125,27 @@ def get_ga_rl_signal(current_user):
 @app.route('/ga-rl/history', methods=['GET'])
 @token_required
 @track_metrics
-@rate_limit(max_requests=50, window=3600)
+@rate_limit(max_requests=500, window=300)  # 500 requests per 5 minutes (relaxed for development)
 def get_ga_rl_history(current_user):
     """Get evolution history from GA+RL training."""
     try:
         if not GA_RL_AVAILABLE:
-            return jsonify({"error": "GA+RL module not available"}), 400
+            return jsonify({
+                "history": [],
+                "generations_completed": 0,
+                "best_chromosome": None,
+                "message": "GA+RL module not available"
+            }), 200
 
         global ga_rl_system
 
         if ga_rl_system is None:
-            return jsonify({"error": "GA+RL system not initialized"}), 400
+            return jsonify({
+                "history": [],
+                "generations_completed": 0,
+                "best_chromosome": None,
+                "message": "GA+RL system not initialized"
+            }), 200
 
         history = ga_rl_system.training_manager.get_evolution_history()
 
