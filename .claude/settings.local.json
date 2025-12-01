@@ -33,7 +33,16 @@
       "Bash(git reset:*)",
       "Bash(git add:*)",
       "Bash(git commit:*)",
-      "Bash(git push:*)"
+      "Bash(git push:*)",
+      "Bash(docker system info:*)",
+      "Bash(docker tag:*)",
+      "Bash(docker push:*)",
+      "Bash(ssh:*)",
+      "Bash(ping:*)",
+      "Bash(ipconfig:*)",
+      "Bash(scp:*)",
+      "Bash(net share:*)",
+      "Bash(net share \"MarketData=F:\\Market Data\\Extracted\" /grant:Everyone,READ)"
     ],
     "deny": [],
     "ask": []
