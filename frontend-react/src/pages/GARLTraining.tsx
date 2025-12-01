@@ -282,7 +282,14 @@ const GARLTraining: React.FC = () => {
     if (!isLoggedIn) return;
 
     const handleProgress = (data: any) => {
-      addLog('info', `Generation ${data.generation}: Best fitness = ${data.best_fitness?.toFixed(4)}, Avg = ${data.avg_fitness?.toFixed(4)}`);
+      // Update metrics from progress
+      setMetrics(prev => ({
+        ...prev,
+        currentGeneration: data.generation,
+        totalGenerations: data.total_generations || config.num_generations,
+        bestFitness: data.best_fitness || prev?.bestFitness || 0,
+        avgFitness: data.avg_fitness || prev?.avgFitness || 0,
+      } as TrainingMetrics));
       fetchHistory();
     };
 
@@ -301,6 +308,12 @@ const GARLTraining: React.FC = () => {
       fetchStatus();
     };
 
+    // Handle log messages from backend
+    const handleLog = (data: any) => {
+      const level = data.level as LogEntry['level'] || 'info';
+      addLog(level, data.message);
+    };
+
     // Subscribe to WebSocket events
     wsService.connect().catch(console.error);
 
@@ -309,6 +322,7 @@ const GARLTraining: React.FC = () => {
       socket.on('ga_rl_progress', handleProgress);
       socket.on('ga_rl_complete', handleComplete);
       socket.on('ga_rl_error', handleError);
+      socket.on('ga_rl_log', handleLog);
     }
 
     return () => {
@@ -316,9 +330,10 @@ const GARLTraining: React.FC = () => {
         socket.off('ga_rl_progress', handleProgress);
         socket.off('ga_rl_complete', handleComplete);
         socket.off('ga_rl_error', handleError);
+        socket.off('ga_rl_log', handleLog);
       }
     };
-  }, [isLoggedIn, addLog, fetchStatus, fetchHistory]);
+  }, [isLoggedIn, addLog, fetchStatus, fetchHistory, config.num_generations]);
 
   // Initial load - only after logged in
   useEffect(() => {

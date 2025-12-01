@@ -2001,22 +2001,60 @@ def start_ga_rl_training(current_user):
             market_data[col] = market_data[col].astype(float)
         market_data['volume'] = market_data['volume'].astype(int)
 
+        # Determine device
+        device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        device_name = torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'CPU'
+
         logger.info(f"Starting GA+RL training with {len(market_data)} data points for {symbol}")
+        logger.info(f"Device: {device.upper()} ({device_name})")
+
+        # Emit initial status
+        socketio.emit('ga_rl_log', {
+            'level': 'info',
+            'message': f'Starting GA+RL training for {symbol} with {len(market_data)} data points',
+            'timestamp': time.time()
+        })
+        socketio.emit('ga_rl_log', {
+            'level': 'info',
+            'message': f'Training device: {device.upper()} ({device_name})',
+            'timestamp': time.time()
+        })
 
         # Define progress callback that emits WebSocket updates
         def training_progress_callback(info):
+            # Emit generation progress
             socketio.emit('ga_rl_progress', {
                 'generation': info['generation'],
                 'best_fitness': info['best_fitness'],
                 'avg_fitness': info['avg_fitness'],
                 'generation_time': info.get('generation_time', 0),
+                'best_chromosome': info.get('best_chromosome'),
+                'timestamp': time.time()
+            })
+            # Also emit a log message
+            socketio.emit('ga_rl_log', {
+                'level': 'success',
+                'message': f"Generation {info['generation']} complete: Best={info['best_fitness']:.4f}, Avg={info['avg_fitness']:.4f}",
                 'timestamp': time.time()
             })
 
         # Start training in background thread
         def run_training():
             try:
+                socketio.emit('ga_rl_log', {
+                    'level': 'info',
+                    'message': 'Initializing GA+RL system...',
+                    'timestamp': time.time()
+                })
+
                 results = ga_rl_system.train(market_data, training_progress_callback)
+
+                socketio.emit('ga_rl_log', {
+                    'level': 'success',
+                    'message': f"Training complete! Final fitness: {results.get('best_fitness', 0):.4f}",
+                    'timestamp': time.time()
+                })
+
                 socketio.emit('ga_rl_complete', {
                     'success': results.get('success', False),
                     'results': results,
@@ -2024,6 +2062,13 @@ def start_ga_rl_training(current_user):
                 })
             except Exception as e:
                 logger.error(f"GA+RL training error: {e}")
+                import traceback
+                traceback.print_exc()
+                socketio.emit('ga_rl_log', {
+                    'level': 'error',
+                    'message': f'Training error: {str(e)}',
+                    'timestamp': time.time()
+                })
                 socketio.emit('ga_rl_error', {
                     'error': str(e),
                     'timestamp': time.time()

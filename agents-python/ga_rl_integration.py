@@ -497,8 +497,22 @@ class GADQNTrainingManager:
         self.is_training = True
         self._stop_event.clear()
 
+        # Determine device
+        device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        device_name = torch.cuda.get_device_name(0) if torch.cuda.is_available() else 'CPU'
+
+        logger.info("=" * 60)
+        logger.info("STARTING GA+RL EVOLUTION")
+        logger.info(f"Device: {device.upper()} ({device_name})")
+        logger.info(f"Population size: {self.population_size}")
+        logger.info(f"Generations: {self.num_generations}")
+        logger.info(f"Training data points: {len(self.training_data)}")
+        logger.info("=" * 60)
+
         # Initialize population
+        logger.info("Initializing population...")
         self.population.initialize_population()
+        logger.info(f"Population initialized with {len(self.population.population)} chromosomes")
 
         try:
             for generation in range(self.num_generations):
@@ -509,12 +523,19 @@ class GADQNTrainingManager:
                 self.current_generation = generation
                 generation_start = time.time()
 
+                logger.info("-" * 40)
+                logger.info(f"GENERATION {generation + 1}/{self.num_generations}")
+                logger.info("-" * 40)
+
                 # Evaluate each chromosome in the population
                 for idx, chromosome in enumerate(self.population.population):
                     if self._stop_event.is_set():
                         break
 
                     self.current_chromosome_idx = idx
+                    chr_start = time.time()
+
+                    logger.info(f"  Evaluating chromosome {idx + 1}/{len(self.population.population)}...")
 
                     # Evaluate chromosome
                     metrics = self.evaluate_chromosome(
@@ -530,6 +551,12 @@ class GADQNTrainingManager:
                     chromosome.max_drawdown = metrics['max_drawdown']
                     chromosome.win_rate = metrics['win_rate']
 
+                    chr_time = time.time() - chr_start
+                    logger.info(f"    Chromosome {idx + 1}: fitness={chromosome.fitness:.4f}, "
+                               f"sharpe={chromosome.sharpe_ratio:.4f}, "
+                               f"return={chromosome.total_return*100:.2f}%, "
+                               f"time={chr_time:.1f}s")
+
                     # Update progress
                     with self._lock:
                         self.training_progress = {
@@ -542,13 +569,18 @@ class GADQNTrainingManager:
                             'elapsed_time': time.time() - generation_start
                         }
 
-                    logger.debug(f"Gen {generation+1}, Chr {idx+1}: fitness={chromosome.fitness:.4f}")
-
                 # Evolve population
+                logger.info("  Evolving population (selection, crossover, mutation)...")
                 self.population.evolve()
 
                 generation_time = time.time() - generation_start
-                logger.info(f"Generation {generation+1}/{self.num_generations} completed in {generation_time:.1f}s")
+                best_fitness = self.population.best_chromosome.fitness if self.population.best_chromosome else 0
+                avg_fitness = np.mean([c.fitness for c in self.population.population])
+
+                logger.info(f"  Generation {generation+1} COMPLETE:")
+                logger.info(f"    Best fitness: {best_fitness:.4f}")
+                logger.info(f"    Avg fitness: {avg_fitness:.4f}")
+                logger.info(f"    Time: {generation_time:.1f}s")
 
                 # Call callback if provided
                 if callback:
