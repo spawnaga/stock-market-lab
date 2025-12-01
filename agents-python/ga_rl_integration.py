@@ -378,13 +378,15 @@ class GADQNTrainingManager:
         num_generations: int = 50,
         training_episodes: int = 100,
         evaluation_episodes: int = 20,
-        symbol: str = "AAPL"
+        symbol: str = "AAPL",
+        initial_capital: float = 100000
     ):
         self.population = GADQNPopulation(population_size)
         self.num_generations = num_generations
         self.training_episodes = training_episodes
         self.evaluation_episodes = evaluation_episodes
         self.symbol = symbol
+        self.initial_capital = initial_capital
 
         # Training state
         self.is_training = False
@@ -428,30 +430,25 @@ class GADQNTrainingManager:
             Dictionary with fitness metrics
         """
         # Create environment and agent from chromosome
+        # Convert DataFrame to numpy array if needed
+        if isinstance(data, pd.DataFrame):
+            data_array = data[['open', 'high', 'low', 'close', 'volume']].values
+        else:
+            data_array = data
+
         env = TradingEnvironment(
-            data=data,
-            initial_balance=100000,
+            data=data_array,
+            initial_capital=self.initial_capital,
             transaction_cost=0.001
         )
 
         config = chromosome.to_dqn_config()
         agent = DQNAgent(config)
 
-        # Create trainer
-        trainer = DQNTrainer(
-            agent=agent,
-            env=env,
-            validation_env=None
-        )
-
-        # Train the agent
-        training_results = trainer.train(
-            num_episodes=num_episodes,
-            max_steps_per_episode=len(data) - 1,
-            validate_every=0,  # Skip validation during training
-            early_stopping_patience=0,  # No early stopping
-            verbose=False
-        )
+        # Train the agent directly using train_episode
+        for episode in range(num_episodes):
+            env.reset()
+            agent.train_episode(env)
 
         # Evaluate on same data to compute fitness
         total_rewards = []
@@ -528,7 +525,7 @@ class GADQNTrainingManager:
         emit_log('info', "=" * 50)
         emit_log('info', "🧬 STARTING GA+RL EVOLUTION")
         emit_log('info', f"   Device: {device.upper()} ({device_name})")
-        emit_log('info', f"   Population: {self.population_size} chromosomes")
+        emit_log('info', f"   Population: {self.population.population_size} chromosomes")
         emit_log('info', f"   Generations: {self.num_generations}")
         emit_log('info', f"   Training episodes per chromosome: {self.training_episodes}")
         emit_log('info', f"   Training data: {len(self.training_data)} samples")
@@ -708,17 +705,20 @@ class IntegratedTradingSystem:
         symbol: str = "AAPL",
         population_size: int = 20,
         num_generations: int = 50,
-        model_dir: str = "./models"
+        model_dir: str = "./models",
+        initial_capital: float = 100000
     ):
         self.symbol = symbol
         self.model_dir = model_dir
+        self.initial_capital = initial_capital
         os.makedirs(model_dir, exist_ok=True)
 
         # Initialize training manager
         self.training_manager = GADQNTrainingManager(
             population_size=population_size,
             num_generations=num_generations,
-            symbol=symbol
+            symbol=symbol,
+            initial_capital=initial_capital
         )
 
         # Trading agent (initialized after training)

@@ -1,0 +1,46 @@
+# Market data (large CSV files)
+data/market/*.csv
+data/market/*.txt
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+
+# Node
+node_modules/
+npm-debug.log*
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build outputs
+build/
+dist/
+*.egg-info/
+
+# Environment files with secrets
+.env.local
+.env.*.local
+
+# Logs
+*.log
+logs/
+
+# Models (can be large)
+agents-python/models/
+
+# Temp files
+nul

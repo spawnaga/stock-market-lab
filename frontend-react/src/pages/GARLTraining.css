@@ -586,6 +586,10 @@ section h3 {
   gap: 0.5rem;
 }
 
+.form-group.full-width {
+  grid-column: 1 / -1;
+}
+
 .form-group label {
   color: #374151;
   font-weight: 600;

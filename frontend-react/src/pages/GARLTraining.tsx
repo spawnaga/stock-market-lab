@@ -11,8 +11,10 @@ interface TrainingConfig {
   symbol: string;
   population_size: number;
   num_generations: number;
+  initial_capital: number;
   start_date: string;
   end_date: string;
+  data_path: string;
 }
 
 interface LogEntry {
@@ -47,8 +49,10 @@ const GARLTraining: React.FC = () => {
     symbol: 'AAPL',
     population_size: 20,
     num_generations: 50,
+    initial_capital: 100000,
     start_date: '',
-    end_date: ''
+    end_date: '',
+    data_path: ''
   });
 
   const [testSignal, setTestSignal] = useState<GARLSignal | null>(null);
@@ -157,7 +161,8 @@ const GARLTraining: React.FC = () => {
       await apiService.initializeGARL({
         symbol: config.symbol,
         population_size: config.population_size,
-        num_generations: config.num_generations
+        num_generations: config.num_generations,
+        initial_capital: config.initial_capital
       });
       setSuccessMessage('GA+RL system initialized successfully!');
       addLog('success', `System initialized: ${config.population_size} population, ${config.num_generations} generations`);
@@ -178,7 +183,8 @@ const GARLTraining: React.FC = () => {
       await apiService.startGARLTraining({
         symbol: config.symbol,
         start_date: config.start_date || undefined,
-        end_date: config.end_date || undefined
+        end_date: config.end_date || undefined,
+        data_path: config.data_path || undefined
       });
       setSuccessMessage('Training started! Monitor progress below.');
       addLog('success', 'Training started successfully');
@@ -217,7 +223,8 @@ const GARLTraining: React.FC = () => {
       await apiService.initializeGARL({
         symbol: config.symbol,
         population_size: config.population_size,
-        num_generations: config.num_generations
+        num_generations: config.num_generations,
+        initial_capital: config.initial_capital
       });
       setHistory(null);
       setMetrics(null);
@@ -657,6 +664,19 @@ const GARLTraining: React.FC = () => {
             <h2>Training Configuration</h2>
             <div className="config-form">
               <div className="form-row">
+                <div className="form-group full-width">
+                  <label>Market Data Path</label>
+                  <input
+                    type="text"
+                    value={config.data_path}
+                    onChange={(e) => setConfig({ ...config, data_path: e.target.value })}
+                    placeholder="F:/Market Data/Extracted/stock_full_1min_adjsplitdiv"
+                    disabled={status?.is_training}
+                  />
+                  <span className="form-hint">Path to directory containing CSV files (e.g., AAPL.csv). Leave empty to use database.</span>
+                </div>
+              </div>
+              <div className="form-row">
                 <div className="form-group">
                   <label>Trading Symbol</label>
                   <input
@@ -694,6 +714,21 @@ const GARLTraining: React.FC = () => {
                   />
                   <span className="form-hint">Evolution iterations (5-200)</span>
                 </div>
+                <div className="form-group">
+                  <label>Initial Capital ($)</label>
+                  <input
+                    type="number"
+                    value={config.initial_capital}
+                    onChange={(e) => setConfig({ ...config, initial_capital: parseInt(e.target.value) || 100000 })}
+                    min={1000}
+                    max={10000000}
+                    step={1000}
+                    disabled={status?.is_training}
+                  />
+                  <span className="form-hint">Starting capital for simulation ($1K - $10M)</span>
+                </div>
+              </div>
+              <div className="form-row">
                 <div className="form-group">
                   <label>Estimated Training Time</label>
                   <div className="estimate-display">

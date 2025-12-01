@@ -456,12 +456,14 @@ export interface GARLInitParams {
   symbol?: string;
   population_size?: number;
   num_generations?: number;
+  initial_capital?: number;
 }
 
 export interface GARLTrainParams {
   symbol?: string;
   start_date?: string;
   end_date?: string;
+  data_path?: string;
 }
 
 export interface GARLMarketState {

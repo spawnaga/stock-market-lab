@@ -117,8 +117,16 @@ services:
       - CPP_BACKEND_URL=${CPP_BACKEND_URL:-http://cpp-backend:8080}
       - MARKET_DATA_PATH=/data/market
       - ENABLE_GPU=${ENABLE_GPU:-true}
+      - NVIDIA_VISIBLE_DEVICES=all
     volumes:
       - "${MARKET_DATA_PATH:-./data/market}:/data/market:ro"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
     depends_on:
       postgres:
         condition: service_healthy

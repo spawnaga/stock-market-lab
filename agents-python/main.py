@@ -2116,19 +2116,22 @@ def initialize_ga_rl(current_user):
         symbol = data.get('symbol', 'AAPL')
         population_size = data.get('population_size', 20)
         num_generations = data.get('num_generations', 50)
+        initial_capital = data.get('initial_capital', 100000)
 
         # Validate parameters
         population_size = max(5, min(100, population_size))
         num_generations = max(5, min(200, num_generations))
+        initial_capital = max(1000, min(10000000, initial_capital))
 
         ga_rl_system = IntegratedTradingSystem(
             symbol=symbol,
             population_size=population_size,
             num_generations=num_generations,
-            model_dir="./models/ga_rl"
+            model_dir="./models/ga_rl",
+            initial_capital=initial_capital
         )
 
-        logger.info(f"GA+RL system initialized for {symbol} with pop={population_size}, gen={num_generations}")
+        logger.info(f"GA+RL system initialized for {symbol} with pop={population_size}, gen={num_generations}, capital=${initial_capital:,}")
 
         # Emit initialization logs
         socketio.emit('ga_rl_log', {
@@ -2199,35 +2202,104 @@ def start_ga_rl_training(current_user):
         symbol = data.get('symbol', ga_rl_system.symbol)
         start_date = data.get('start_date')
         end_date = data.get('end_date')
+        data_path = data.get('data_path')
 
-        # Fetch market data from database
+        # Fetch market data from CSV file or database
         import pandas as pd
+        import os
 
-        with get_db_connection() as conn:
-            with conn.cursor(cursor_factory=RealDictCursor) as cur:
-                query = """
-                    SELECT datetime, open, high, low, close, volume
-                    FROM market_data_ohlcv
-                    WHERE symbol = %s
-                """
-                params = [symbol.upper()]
+        market_data = None
+        rows = None
 
-                if start_date and end_date:
-                    query += " AND datetime BETWEEN %s AND %s"
-                    params.extend([start_date, end_date])
+        # Default data paths to try (in order of priority)
+        default_data_paths = [
+            '/data/market',  # Docker mounted path
+            os.environ.get('MARKET_DATA_PATH', ''),  # Environment variable
+            './data/market',  # Local development path
+        ]
 
-                query += " ORDER BY datetime LIMIT 5000"
-                cur.execute(query, params)
-                rows = cur.fetchall()
+        # If data_path is provided, use it; otherwise try default paths
+        paths_to_try = [data_path] if data_path else default_data_paths
 
-        if not rows or len(rows) < 100:
+        for try_path in paths_to_try:
+            if not try_path or not os.path.isdir(try_path):
+                continue
+
+            # Try multiple file extensions and naming conventions
+            possible_files = [
+                os.path.join(try_path, f"{symbol.upper()}.csv"),
+                os.path.join(try_path, f"{symbol.upper()}.txt"),
+                os.path.join(try_path, f"{symbol.lower()}.csv"),
+                os.path.join(try_path, f"{symbol.lower()}.txt"),
+            ]
+
+            csv_file = None
+            for filepath in possible_files:
+                if os.path.exists(filepath):
+                    csv_file = filepath
+                    break
+
+            if csv_file:
+                logger.info(f"Loading market data from CSV: {csv_file}")
+                try:
+                    # Read CSV file (format: datetime,open,high,low,close,volume - no header)
+                    market_data = pd.read_csv(
+                        csv_file,
+                        header=None,
+                        names=['datetime', 'open', 'high', 'low', 'close', 'volume'],
+                        parse_dates=['datetime']
+                    )
+
+                    # Apply date filters if provided
+                    if start_date:
+                        market_data = market_data[market_data['datetime'] >= pd.to_datetime(start_date)]
+                    if end_date:
+                        market_data = market_data[market_data['datetime'] <= pd.to_datetime(end_date)]
+
+                    # Limit to 5000 rows for training
+                    market_data = market_data.head(5000)
+
+                    logger.info(f"Loaded {len(market_data)} data points from CSV at {try_path}")
+                    break  # Successfully loaded, exit the loop
+                except Exception as e:
+                    logger.error(f"Error loading CSV file from {try_path}: {e}")
+                    continue  # Try next path
+
+        # If no data_path or CSV loading failed, try database
+        if market_data is None:
+            with get_db_connection() as conn:
+                with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                    query = """
+                        SELECT datetime, open, high, low, close, volume
+                        FROM market_data_ohlcv
+                        WHERE symbol = %s
+                    """
+                    params = [symbol.upper()]
+
+                    if start_date and end_date:
+                        query += " AND datetime BETWEEN %s AND %s"
+                        params.extend([start_date, end_date])
+
+                    query += " ORDER BY datetime LIMIT 5000"
+                    cur.execute(query, params)
+                    rows = cur.fetchall()
+
+            if not rows or len(rows) < 100:
+                return jsonify({
+                    "error": f"Insufficient market data for {symbol}. Need at least 100 data points, found {len(rows) if rows else 0}. Provide a 'data_path' to load from CSV files."
+                }), 400
+
+            # Convert to DataFrame
+            market_data = pd.DataFrame(rows)
+            market_data['datetime'] = pd.to_datetime(market_data['datetime'])
+
+        # Validate we have enough data
+        if len(market_data) < 100:
             return jsonify({
-                "error": f"Insufficient market data for {symbol}. Need at least 100 data points, found {len(rows) if rows else 0}."
+                "error": f"Insufficient market data for {symbol}. Need at least 100 data points, found {len(market_data)}."
             }), 400
 
-        # Convert to DataFrame
-        market_data = pd.DataFrame(rows)
-        market_data['datetime'] = pd.to_datetime(market_data['datetime'])
+        # Ensure correct data types
         for col in ['open', 'high', 'low', 'close']:
             market_data[col] = market_data[col].astype(float)
         market_data['volume'] = market_data['volume'].astype(int)
